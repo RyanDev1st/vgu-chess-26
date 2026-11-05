@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=16";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=17";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "16", dbg = [];
+const VERSION = "17", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -152,33 +152,39 @@ const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.
 // glitter: each grain catches the light at its own angle, so grains twinkle as the card moves, and broad washes of
 // yellow / green / cyan / pink slide across the light areas with the angle. Shared numbers with the 2D path below.
 const FOIL = { grain: [260, 168], wash: .9, silver: .1, glow: .45, sparkle: 1.6, darkGlint: .22 };   // darkGlint: the film's glints on dark print
-// The photo stays plain print (foil on skin reads as a rash): no foil inside the portrait window, in card mm incl. bleed.
-const PHOTO = [9.4, 38.2, 52.4];   // x from, x to, y down to
+// The photo stays plain print (foil on skin reads as a rash): no foil where card.js says the photo is (the window and
+// the head rising above it, exactly; a rectangle here used to leave a dead block above the head).
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
-const holo = (map, hasPhoto) => {   // hasPhoto: the front only; the back is all foil
+const holo = (map, photoMask) => {   // photoMask: the front only; the back is all foil
   const m = new THREE.MeshPhysicalMaterial({
     map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: .42,
     roughness: .62, metalness: .1, clearcoat: .2, clearcoatRoughness: .3, envMapIntensity: .1, sheen: .15, sheenColor: 0x5fe0c8, sheenRoughness: .5,
   });
+  // three.js shares one compiled shader between materials whose onBeforeCompile reads the same; the front and back
+  // differ (the photo cut-out), so name them apart. Without this the back ran the front's shader: first the photo's
+  // cut-out showed on the back as a dead block, then (with the mask) the back lost its foil entirely.
+  m.customProgramCacheKey = () => photoMask ? "holo-front" : "holo-back";
   m.onBeforeCompile = sh => {
-    Object.assign(sh.uniforms, holoU);
+    Object.assign(sh.uniforms, holoU, photoMask ? { uPhotoMask: { value: photoMask } } : {});
     const f = n => n.toFixed(3);
-    sh.fragmentShader = "uniform vec2 uTilt; uniform float uTime;\n" + sh.fragmentShader.replace("#include <emissivemap_fragment>", `
+    // grain hash without sin(): fract(sin(big) * 43758) loses precision on many GPUs once the numbers grow, so the
+    // glitter died away from the card's bottom-left corner (it only showed along the left and bottom edges)
+    sh.fragmentShader = `uniform vec2 uTilt; uniform float uTime;${photoMask ? " uniform sampler2D uPhotoMask;" : ""}
+      float holoHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+` + sh.fragmentShader.replace("#include <emissivemap_fragment>", `
       #include <emissivemap_fragment>
       {
         vec3 base = texture2D(map, vMapUv).rgb;                                   // linear colour of the print here
         float lum = dot(base, vec3(.299, .587, .114));
         float hi = max(base.r, max(base.g, base.b)), lo = min(base.r, min(base.g, base.b));
         float sat = (hi - lo) / (hi + .02);
-        float xm = vMapUv.x * ${f(W)}, ym = (1. - vMapUv.y) * ${f(H)};
-        float inPhoto = ${hasPhoto ? 1 : 0}. * step(${f(PHOTO[0])}, xm) * step(xm, ${f(PHOTO[1])}) * step(ym, ${f(PHOTO[2])});
+        float inPhoto = ${photoMask ? "smoothstep(.15, .6, texture2D(uPhotoMask, vMapUv).a)" : "0."};
         float foil = smoothstep(.04, .35, lum) * (1. - .35 * smoothstep(.3, .9, sat)) * (1. - inPhoto);   // light print = foil; not the photo
         vec2 a = normal.xy * 1.6 + uTilt;                                          // the card's angle to the viewer
         float ph = dot(vMapUv, vec2(1.1, .6)) + a.x * 1.3 + a.y * .9 + uTime * .03;
         float catchL = smoothstep(.15, .85, .5 + .5 * sin(6.2831 * ph * ${f(FOIL.wash)}));   // broad lit / unlit washes
         vec2 cell = floor(vMapUv * vec2(${f(FOIL.grain[0])}, ${f(FOIL.grain[1])}));
-        float r1 = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
-        float r2 = fract(sin(dot(cell, vec2(39.3468, 11.135))) * 24634.6345);
+        float r1 = holoHash(cell), r2 = holoHash(cell + vec2(57.31, 113.7));
         float tw = pow(.5 + .5 * cos(6.2831 * (r2 + a.x * 1.9 + a.y * 1.4 + uTime * .02)), 24.) * step(.62, r1);   // only some flakes face the light   // a grain flashing as it turns
         vec3 spectrum = .5 + .5 * cos(6.2831 * (ph + r1 * .25 + vec3(0., .33, .67)));
         spectrum = mix(spectrum, vec3(.18, .95, .82), .42);   // the foil reads blue-green when it catches light (as in the shop video)
@@ -201,11 +207,12 @@ function cardFace(map, back) {
   const g = new THREE.ShapeGeometry(sh, 12), p = g.attributes.position, uv = g.attributes.uv;
   for (let i = 0; i < p.count; i++)     // trim area of the bleed texture
     uv.setXY(i, (p.getX(i) / CW + .5) * ((W - 4) / W) + 2 / W, (p.getY(i) / CH + .5) * ((H - 4) / H) + 2 / H);
-  const m = new THREE.Mesh(g, holo(map, !back));
+  const m = new THREE.Mesh(g, holo(map, back ? null : photoMaskTex));
   if (back) { m.rotation.y = Math.PI; m.position.z = -.006; } else m.position.z = .006;
   return m;
 }
 const cardObj = new THREE.Group();
+const photoMaskTex = new THREE.CanvasTexture(frontCv.photoMask);
 cardObj.add(cardFace(tex(frontCv), false), cardFace(tex(backCv), true));
 const clip = new THREE.Mesh(new THREE.BoxGeometry(.9, .32, .14), new THREE.MeshStandardMaterial({ color: 0x9a9da3, metalness: 1, roughness: .3 }));
 clip.position.y = CH / 2 + .05; cardObj.add(clip);
@@ -478,10 +485,12 @@ const trimOf = cv => {
 // The foil in 2D, same model as the shader: foil = light, pale print; three glitter masks (the grain twinkling at three
 // moments) are cross-faded by angle, and multiplied by the sliding colour wash.
 const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
-const foilMasks = (img, hasPhoto) => {
+const foilMasks = (img, photoMask) => {   // photoMask: where the photo is (front only)
   const w = img.width, h = img.height, src = document.createElement("canvas"); src.width = w; src.height = h;
   const sg = src.getContext("2d", { willReadFrequently: true }); sg.drawImage(img, 0, 0);
   const px = sg.getImageData(0, 0, w, h).data, gx = FOIL.grain[0] / w, gy = FOIL.grain[1] / h;
+  let pm = null;
+  if (photoMask) { sg.clearRect(0, 0, w, h); sg.drawImage(photoMask, 0, 0); pm = sg.getImageData(0, 0, w, h).data; }
   const hash = (x, y, k) => { const v = Math.sin(x * k[0] + y * k[1]) * k[2]; return v - Math.floor(v); };
   const masks = [0, 1, 2].map(() => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; });
   const data = masks.map(c => c.getContext("2d").createImageData(w, h));
@@ -490,7 +499,7 @@ const foilMasks = (img, hasPhoto) => {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = (y * w + x) * 4, r = (px[i] / 255) ** 2.2, g = (px[i + 1] / 255) ** 2.2, b = (px[i + 2] / 255) ** 2.2;
     const lum = r * .299 + g * .587 + b * .114, hi = Math.max(r, g, b), lo = Math.min(r, g, b);
-    const xm = x / w * (W - 4) + 2, ym = y / h * (H - 4) + 2, inPhoto = hasPhoto && xm > PHOTO[0] && xm < PHOTO[1] && ym < PHOTO[2];
+    const inPhoto = pm ? pm[i + 3] > 90 : false;
     const foil = inPhoto ? 0 : smooth(.04, .35, lum) * (1 - .35 * smooth(.3, .9, (hi - lo) / (hi + .02)));
     const cx = Math.floor(x * gx), cy = Math.floor(y * gy), r2 = hash(cx, cy, [39.3468, 11.135, 24634.6345]);
     sd.data[i] = 115; sd.data[i + 1] = 217; sd.data[i + 2] = 230; sd.data[i + 3] = foil * 255;   // cyan-silver
@@ -504,7 +513,7 @@ const foilMasks = (img, hasPhoto) => {
   silver.getContext("2d").putImageData(sd, 0, 0);
   return { masks, silver };
 };
-const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map((img, i) => ({ img, ...foilMasks(img, i === 0) }));
+const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map((img, i) => ({ img, ...foilMasks(img, i === 0 ? trimOf(frontCv.photoMask) : null) }));
 const foilCv = ctx2 && Object.assign(document.createElement("canvas"), { width: faces2[0].img.width, height: faces2[0].img.height });
 const TINT = [.18, .95, .82];   // blue-green, as the shader
 const washColour = ph => [0, .33, .67].map((k, i) => Math.round(255 * ((.5 + .5 * Math.cos(2 * Math.PI * (ph + k))) * .58 + TINT[i] * .42)));

@@ -128,6 +128,7 @@ export function drawFront(canvas, card, photo, pxPerMm) {
   ctx.restore();
   ctx.strokeStyle = metal(ctx, s, t.metal, px, py, px + pw, py + ph); ctx.lineWidth = .16 * s;
   win(ctx); ctx.stroke();
+  let photoLayer = null;
   if (photo) {
     const h = 61, w = h * photo.width / photo.height;
     const m = document.createElement("canvas"); m.width = canvas.width; m.height = canvas.height;
@@ -147,8 +148,13 @@ export function drawFront(canvas, card, photo, pxPerMm) {
     ctx.save(); ctx.globalAlpha = .07;
     for (let i = 0; i < 12; i++) { const a = i / 12 * 2 * Math.PI, r = .9 * s; ctx.drawImage(sh, Math.cos(a) * r, Math.sin(a) * r + .5 * s); }
     ctx.restore();
-    ctx.drawImage(m, 0, 0);
+    ctx.drawImage(m, 0, 0); photoLayer = m;
   }
+  // where the photo is (the window plus the head above it), for the foil to leave alone: foil on skin reads as a rash
+  const mask = document.createElement("canvas"); mask.width = canvas.width; mask.height = canvas.height;
+  const mg = mask.getContext("2d", CPU); mg.fillStyle = "#fff"; win(mg); mg.fill();
+  if (photoLayer) mg.drawImage(photoLayer, 0, 0);
+  canvas.photoMask = mask;
 
   // right column: who, what place, the few facts that matter
   const X = 43;
