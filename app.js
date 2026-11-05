@@ -96,16 +96,40 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
 scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 const camera = new THREE.PerspectiveCamera(25, 1, 0.1, 200);
-const light = new THREE.DirectionalLight(0xffffff, 1.4); light.position.set(3, 5, 8); scene.add(light);
+const light = new THREE.DirectionalLight(0xffffff, .55); light.position.set(3, 5, 8); scene.add(light);
 scene.add(new THREE.AmbientLight(0xffffff, .25));
 
 const CW = 8.56, CH = 5.4, R = .318;   // card in scene units (1 = 10 mm), trim size
 const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = renderer.capabilities.getMaxAnisotropy(); return x; };
-const holo = map => new THREE.MeshPhysicalMaterial({
-  map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: .3,
-  roughness: .32, metalness: .15, clearcoat: .55, clearcoatRoughness: .25, envMapIntensity: .45,
-  iridescence: 1, iridescenceMap: map, iridescenceIOR: 1.3, iridescenceThicknessRange: [200, 900],
-});
+// Holographic foil, like the printed laminate: a rainbow that slides across the card as its angle to you changes
+// (card swing + phone tilt), strongest on the light parts (metal, fine lines, type), with fine diffraction sparkle.
+const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
+const holo = map => {
+  const m = new THREE.MeshPhysicalMaterial({
+    map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: .42,
+    roughness: .5, metalness: .1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: .2,
+    
+  });
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, holoU);
+    sh.fragmentShader = "uniform vec2 uTilt; uniform float uTime;\n" + sh.fragmentShader.replace("#include <emissivemap_fragment>", `
+      #include <emissivemap_fragment>
+      {
+        vec3 base = texture2D(map, vMapUv).rgb;
+        float lum = dot(base, vec3(.299, .587, .114));
+        vec2 a = normal.xy * 1.8 + uTilt;                                   // the card's angle to the viewer
+        float h = vMapUv.x * 1.1 - vMapUv.y * .6 + a.x * .9 + a.y * .6;
+        vec3 rainbow = .5 + .5 * cos(6.2831 * (h + vec3(0., .33, .67)));
+        float band = .55 + .45 * sin(6.2831 * (vMapUv.x * .8 + vMapUv.y * .5 + a.x * .7 - a.y * .4));   // light catching in a moving band
+        vec2 cell = floor(vMapUv * vec2(520., 340.));
+        float rnd = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+        float spark = step(.985, fract(rnd + a.x * 2.3 + a.y * 1.7));             // diffraction grain flashing as it turns
+        float amt = (.07 + .5 * smoothstep(.12, .75, lum)) * band;
+        totalEmissiveRadiance += rainbow * amt + rainbow * spark * .35;
+      }`);
+  };
+  return m;
+};
 function cardFace(map, back) {
   const sh = new THREE.Shape(), x = -CW / 2, y = -CH / 2;
   sh.moveTo(x + R, y); sh.lineTo(x + CW - R, y); sh.quadraticCurveTo(x + CW, y, x + CW, y + R);
@@ -155,13 +179,15 @@ for (let i = 0; i < N; i++) { const p = new THREE.Vector3(0, reduce ? -i * SEG :
 const bottom = P[N - 1].clone().add(new THREE.Vector3(.3, reduce ? -CH - .2 : 4, 0)), bottomOld = bottom.clone();
 let spin = 0, spinV = 0, spinTarget = 0, dragging = false;
 const grab = new THREE.Vector3(), gravity = new THREE.Vector3(0, -32, 0);
-addEventListener("deviceorientation", e => { if (e.gamma != null) gravity.x = Math.max(-1, Math.min(1, e.gamma / 30)) * 10; });
+const tilt = new THREE.Vector2();   // phone tilt (or mouse position on a computer) drives the foil rainbow
+addEventListener("deviceorientation", e => { if (e.gamma == null) return; gravity.x = Math.max(-1, Math.min(1, e.gamma / 30)) * 10; tilt.set(e.gamma / 45, (e.beta - 45) / 45); });
+addEventListener("pointermove", e => { if (e.pointerType === "mouse") tilt.set(e.clientX / innerWidth - .5, e.clientY / innerHeight - .5); });
 
 function step(dt) {
   const all = [...P.map((p, i) => [p, O[i]]), [bottom, bottomOld]];
   for (const [i, [p, o]] of all.entries()) {
     if (i === 0 || (dragging && i === N - 1)) continue;
-    const v = p.clone().sub(o).multiplyScalar(.985);
+    const v = p.clone().sub(o).multiplyScalar(.993).clampLength(0, .055);   // speed cap: a flick swings it, never throws it over the top   // air drag: a swing fades over about two seconds
     o.copy(p); p.add(v).addScaledVector(gravity, dt * dt);
   }
   if (dragging) { O[N - 1].copy(P[N - 1]); P[N - 1].lerp(grab, .35); }
@@ -212,33 +238,37 @@ function place() {
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
 const setNdc = e => { const b = canvas.getBoundingClientRect(); ndc.set((e.clientX - b.left) / b.width * 2 - 1, -((e.clientY - b.top) / b.height) * 2 + 1); ray.setFromCamera(ndc, camera); };
 const toWorld = e => { setNdc(e); return ray.ray.intersectPlane(plane, new THREE.Vector3()); };
+const stage = canvas.parentElement;   // the canvas reaches below the stage so the card can swing over the page; input comes from the stage
 let down = null;
-canvas.addEventListener("pointerdown", e => {
+stage.addEventListener("pointerdown", e => {
   setNdc(e);
   if (!ray.intersectObject(cardObj, true).length) return;
   window.DeviceOrientationEvent?.requestPermission?.().catch(() => {});   // iPhone asks for tilt on the first touch
   down = { x: e.clientX, y: e.clientY, t: performance.now(), off: P[N - 1].clone().sub(toWorld(e)) };
-  dragging = true; canvas.classList.add("drag"); canvas.setPointerCapture(e.pointerId);
+  dragging = true; stage.classList.add("drag"); stage.setPointerCapture(e.pointerId);
   grab.copy(P[N - 1]);
 });
-canvas.addEventListener("pointermove", e => { if (dragging) grab.copy(toWorld(e).add(down.off)); });
+stage.addEventListener("pointermove", e => { if (!dragging) return; grab.copy(toWorld(e).add(down.off)); grab.y = Math.min(grab.y, anchor.y - 1.5); });
 const release = e => {
   if (!dragging) return;
-  dragging = false; canvas.classList.remove("drag");
+  dragging = false; stage.classList.remove("drag");
   if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 350) spinTarget += Math.PI;   // tap: turn over
 };
-canvas.addEventListener("pointerup", release); canvas.addEventListener("pointercancel", release);
+stage.addEventListener("pointerup", release); stage.addEventListener("pointercancel", release);
 
 // ---------- fit + loop ----------
 // The view always starts just above the anchor and is wide enough for the card, so the band enters from the top edge.
+// The card is framed to the stage; the canvas just shows more of the same view below it, for the swing.
 function resize() {
-  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const w = canvas.clientWidth, h = canvas.clientHeight, sh = stage.clientHeight;
   renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  const f = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const f0 = Math.tan(THREE.MathUtils.degToRad(12.5));
   const needW = CW + 1.3, needH = (N - 1) * SEG + .12 + CH + 1.4;
-  const dist = Math.max(needW / 2 / f / camera.aspect, needH / 2 / f);
-  camera.position.set(0, anchor.y + .25 - dist * f, dist);
+  const dist = Math.max(needW / 2 / f0 / (w / sh), needH / 2 / f0);
+  const half = dist * f0 * h / sh;                 // half the visible height of the whole canvas
+  camera.fov = 2 * THREE.MathUtils.radToDeg(Math.atan(half / dist));
+  camera.aspect = w / h;
+  camera.position.set(0, anchor.y + .25 - half, dist);
   camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(canvas); resize();
@@ -249,5 +279,6 @@ renderer.setAnimationLoop(now => {
   acc = Math.min(acc + (now - last) / 1000, .25); last = now;
   while (acc >= STEP) { step(STEP); acc -= STEP; }
   place();
+  holoU.uTilt.value.lerp(tilt, .08);
   renderer.render(scene, camera);
 });

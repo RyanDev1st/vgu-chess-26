@@ -19,9 +19,10 @@ body::before { /* a faint pool of the place's metal under the card */
 .lockup { font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
 .lockup b { display: inline-block; font-size: 10.5px; border: 1.5px solid var(--ink); border-radius: 5px; padding: 0 5px; margin-left: 3px; translate: 0 -1px; }
 
-.stage { position: relative; height: min(118vw, 64svh, 600px); }
-#gl { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
-#gl.drag { cursor: grabbing; }
+.stage { position: relative; height: min(118vw, 64svh, 600px); touch-action: none; cursor: grab; }
+.stage.drag { cursor: grabbing; }
+/* the canvas runs past the stage, so a pulled or swinging card passes over the page instead of being cut off */
+#gl { position: absolute; top: 0; left: 0; z-index: 3; width: 100%; height: calc(100% + 360px); display: block; pointer-events: none; }
 #flat { position: absolute; left: 50%; bottom: 8%; translate: -50% 0; width: min(88vw, 420px); border-radius: 4.5% / 7%; }
 
 main { max-width: 460px; margin: 0 auto; padding: 0 22px max(32px, env(safe-area-inset-bottom)); }
