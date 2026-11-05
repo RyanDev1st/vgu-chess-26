@@ -132,10 +132,15 @@ export function drawFront(canvas, card, photo, pxPerMm) {
     const fade = g.createLinearGradient(0, 40 * s, 0, (py + ph) * s);
     fade.addColorStop(0, "rgba(10,9,12,0)"); fade.addColorStop(1, "rgba(10,9,12,.92)");
     g.fillStyle = fade; g.fillRect(0, 40 * s, m.width, (py + ph - 40) * s);
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 1.8 * s; ctx.shadowOffsetY = .5 * s;
-    ctx.drawImage(m, 0, 0);
+    // soft shadow, built by hand: a dark copy stamped in a small ring. (shadowBlur on a full-size layer gets dropped
+    // by some phone GPUs, and with it the whole photo.)
+    const sh = document.createElement("canvas"); sh.width = m.width; sh.height = m.height;
+    const sg = sh.getContext("2d"); sg.drawImage(m, 0, 0);
+    sg.globalCompositeOperation = "source-in"; sg.fillStyle = "#000"; sg.fillRect(0, 0, sh.width, sh.height);
+    ctx.save(); ctx.globalAlpha = .07;
+    for (let i = 0; i < 12; i++) { const a = i / 12 * 2 * Math.PI, r = .9 * s; ctx.drawImage(sh, Math.cos(a) * r, Math.sin(a) * r + .5 * s); }
     ctx.restore();
+    ctx.drawImage(m, 0, 0);
   }
 
   // right column: who, what place, the few facts that matter

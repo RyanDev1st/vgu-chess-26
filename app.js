@@ -3,7 +3,16 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=5";
+
+// ?debug shows what this device is doing (for checking phones we cannot plug in)
+const VERSION = "5", dbg = [];
+const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
+if (new URLSearchParams(location.search).has("debug")) {
+  const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
+  addEventListener("error", e => note("error: " + e.message)); addEventListener("unhandledrejection", e => note("error: " + (e.reason?.message || e.reason)));
+  note("version " + VERSION + " | " + navigator.userAgent.replace(/^Mozilla\/5\.0 /, "").slice(0, 90));
+}
 
 const q = new URLSearchParams(location.search);
 const id = ["1", "2", "3", "4"].includes(q.get("c")) ? q.get("c") : "1";
@@ -19,6 +28,7 @@ const data = await fetch(demo ? "winners.demo.json" : "winners.json", { cache: "
 const card = { rank: Number(id), ...(data.cards?.[id] || {}) };
 const t = TIERS[card.rank];
 const photo = card.photo ? await loadImage(card.photo).catch(() => null) : null;
+note("photo: " + (photo ? photo.naturalWidth + "x" + photo.naturalHeight : "NOT LOADED"));
 const given = (card.name || "").trim().split(/\s+/).pop() || "the winner";
 
 document.documentElement.style.setProperty("--tier", t.line);
@@ -89,7 +99,9 @@ const backCv = drawBack(document.createElement("canvas"), card, photo, 16);
 const canvas = $("#gl");
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); }
-catch { canvas.hidden = true; $("#flat").src = frontCv.toDataURL(); $("#flat").hidden = false; throw new Error("no webgl"); }
+catch (e) { note("webgl: OFF, showing the flat card"); flatCard(); throw new Error("no webgl (flat card shown)"); }
+renderer.debug.onShaderError = (gl, prog, vs, fs) => note("shader error: " + gl.getShaderInfoLog(fs).slice(0, 200));
+{ const gl = renderer.getContext(), x = gl.getExtension("WEBGL_debug_renderer_info"); note("webgl: on, " + (x ? gl.getParameter(x.UNMASKED_RENDERER_WEBGL) : "gpu hidden").slice(0, 60)); }
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -118,13 +130,13 @@ const holo = map => {
         vec3 base = texture2D(map, vMapUv).rgb;
         float lum = dot(base, vec3(.299, .587, .114));
         vec2 a = normal.xy * 1.8 + uTilt;                                   // the card's angle to the viewer
-        float h = vMapUv.x * 1.1 - vMapUv.y * .6 + a.x * .9 + a.y * .6;
+        float h = vMapUv.x * 1.1 - vMapUv.y * .6 + a.x * .9 + a.y * .6 + uTime * .035;   // a slow drift so a still card still glints
         vec3 rainbow = .5 + .5 * cos(6.2831 * (h + vec3(0., .33, .67)));
         float band = .55 + .45 * sin(6.2831 * (vMapUv.x * .8 + vMapUv.y * .5 + a.x * .7 - a.y * .4));   // light catching in a moving band
         vec2 cell = floor(vMapUv * vec2(520., 340.));
         float rnd = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
         float spark = step(.985, fract(rnd + a.x * 2.3 + a.y * 1.7));             // diffraction grain flashing as it turns
-        float amt = (.07 + .5 * smoothstep(.12, .75, lum)) * band;
+        float amt = (.16 + .55 * smoothstep(.1, .7, lum)) * band;
         totalEmissiveRadiance += rainbow * amt + rainbow * spark * .35;
       }`);
   };
@@ -279,6 +291,18 @@ renderer.setAnimationLoop(now => {
   acc = Math.min(acc + (now - last) / 1000, .25); last = now;
   while (acc >= STEP) { step(STEP); acc -= STEP; }
   place();
-  holoU.uTilt.value.lerp(tilt, .08);
+  holoU.uTilt.value.lerp(tilt, .08); holoU.uTime.value = now / 1000;
   renderer.render(scene, camera);
 });
+
+// No 3D on this browser: the flat card still tilts toward the pointer (or the phone's tilt) with the foil sliding across it.
+function flatCard() {
+  canvas.hidden = true;
+  const f = $("#flat"); f.hidden = false; const k = frontCv.width / W, trim = Object.assign(document.createElement("canvas"), { width: Math.round((W - 4) * k), height: Math.round((H - 4) * k) });
+  trim.getContext("2d").drawImage(frontCv, 2 * k, 2 * k, trim.width, trim.height, 0, 0, trim.width, trim.height);   // no print bleed
+  const url = trim.toDataURL(); f.querySelector("img").src = url;
+  const foil = f.querySelector(".foil"); foil.style.maskImage = foil.style.webkitMaskImage = `url(${url})`;   // foil only where the card is light
+  const set = (x, y) => { f.style.setProperty("--x", x.toFixed(3)); f.style.setProperty("--y", y.toFixed(3)); };
+  addEventListener("pointermove", e => set(e.clientX / innerWidth - .5, e.clientY / innerHeight - .5));
+  addEventListener("deviceorientation", e => { if (e.gamma != null) set(e.gamma / 60, (e.beta - 45) / 60); });
+}
