@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=11";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=12";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "11", dbg = [];
+const VERSION = "12", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -152,7 +152,7 @@ const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
 const holo = (map, hasPhoto) => {   // hasPhoto: the front only; the back is all foil
   const m = new THREE.MeshPhysicalMaterial({
     map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: .42,
-    roughness: .5, metalness: .1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: .12, sheen: .3, sheenColor: 0x5fe0c8, sheenRoughness: .5,
+    roughness: .62, metalness: .1, clearcoat: .2, clearcoatRoughness: .3, envMapIntensity: .1, sheen: .15, sheenColor: 0x5fe0c8, sheenRoughness: .5,
   });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, holoU);
