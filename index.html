@@ -21,7 +21,12 @@
   <!-- the card on its lanyard: drag to swing, tap to turn it over -->
   <section class="stage" aria-label="The card. Drag to swing it, tap to turn it over.">
     <canvas id="gl"></canvas>
-    <button class="flip" id="flip" type="button"><i class="ic ic-rotate"></i><span>See the back</span></button>
+    <div class="turn" id="turn">
+      <button type="button" id="turnL" aria-label="Turn left"><i class="ic ic-ccw"></i></button>
+      <span class="pad" id="turnPad" tabindex="0" role="slider" aria-label="Drag to turn and tip the card"><i class="ic ic-arrows"></i>Drag to turn</span>
+      <button type="button" id="turnR" aria-label="Turn right"><i class="ic ic-cw"></i></button>
+      <button type="button" class="over" id="flip"><i class="ic ic-rotate"></i><span>Back</span></button>
+    </div>
   </section>
 
   <main>
@@ -49,7 +54,7 @@
 
     <section class="four">
       <div class="four-head"><h2>This year's four</h2>
-        <span class="arrows"><button type="button" id="prev" aria-label="Previous cards"><i class="ic ic-next flip"></i></button><button type="button" id="next" aria-label="More cards"><i class="ic ic-next"></i></button></span></div>
+        <span class="arrows"><button type="button" id="prev" aria-label="Previous cards"><i class="ic ic-next mirror"></i></button><button type="button" id="next" aria-label="More cards"><i class="ic ic-next"></i></button></span></div>
       <nav id="podium"></nav>
     </section>
 
@@ -71,6 +76,6 @@
 
     <footer>Castlevania Club, Vietnamese-German University<br>Sport Week 2026, 16 to 19 November</footer>
   </main>
-  <script type="module" src="app.js?v=13"></script>
+  <script type="module" src="app.js?v=14"></script>
 </body>
 </html>

@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=13";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=14";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "13", dbg = [];
+const VERSION = "14", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -243,6 +243,7 @@ for (let i = 0; i < N; i++) {
 const bottom = P[N - 1].clone().add(new THREE.Vector3(0, -CH, 0));
 const bottomOld = bottom.clone().add(new THREE.Vector3(reduce ? 0 : .025, reduce ? 0 : DROP_V / 120, 0));   // a slight sideways drift: it lands swinging
 let spin = reduce ? 0 : -1.15 * Math.PI, spinV = 0, spinTarget = 0, dragging = false;
+let pitch = 0, pitchTarget = 0, turning = false;   // set by the turn control: tip the card toward or away from you
 const grab = new THREE.Vector3(), gravity = new THREE.Vector3(0, -32, 0);
 const tilt = new THREE.Vector2();   // phone tilt (or mouse position on a computer) drives the foil rainbow
 // Tilt counts only as a change from how the phone is being held (a slow-moving baseline), so a phone held at an
@@ -295,9 +296,10 @@ function step(dt) {
     const vx = (P[N - 1].x - O[N - 1].x) / dt;
     spinV += Math.max(-6, Math.min(6, vx)) * .02;
   }
-  spinV += (spinTarget - spin) * 30 * dt - spinV * (dragging ? 14 : 4.5) * dt;
+  spinV += (spinTarget - spin) * 30 * dt - spinV * (dragging || turning ? 14 : 4.5) * dt;   // turning by hand: no overshoot
   spinV = Math.max(-14, Math.min(14, spinV));
   spin += spinV * dt;
+  pitch += (pitchTarget - pitch) * Math.min(1, 10 * dt);
 }
 
 // ---------- holding the card where the finger is ----------
@@ -321,12 +323,13 @@ function pin() {   // move the card (no turn) so the held spot is under the fing
 }
 function holdTurn(dt) {   // gravity's turn around the held spot
   const { C, G } = frame2D(), v = C.clone().sub(G);
-  rotV += -v.x * 9 * dt;                 // centre left of the finger: turns anticlockwise, so it swings down
-  // the stretched band pulls the clip: that turns the card only when the pull is at an angle to the held spot
-  // (pulling straight down from the middle turns nothing; this was the "always lifts to the left" bug)
-  const T = P[N - 1], pull = P[N - 2].clone().sub(T).setLength(stretch), r = T.clone().sub(G);
-  rotV += (r.x * pull.y - r.y * pull.x) * 16 * dt;
-  rotV *= Math.exp(-5 * dt);
+  // the stretched band pulls the clip: that turns the card only when the pull is at an angle to the held spot.
+  // The pull runs along the taut band, so it is measured from the band's fixed top, not from a band point that sways.
+  const T = P[N - 1], pull = P[0].clone().sub(T).setLength(stretch), r = T.clone().sub(G);
+  const torque = -v.x * 9 + (r.x * pull.y - r.y * pull.x) * 16;   // gravity: centre left of the finger turns it down
+  // In the hand the card follows these forces without momentum. With momentum it overshot level, the band swung, and
+  // the overshoot grew: pulled straight down it rocked wider and wider ("always lifts to the left", "buggy").
+  rotV = Math.max(-6, Math.min(6, torque / 5));
   const a = rotV * dt, c = Math.cos(a), sn = Math.sin(a);
   for (const p of [P[N - 1], bottom]) { const x = p.x - G.x, y = p.y - G.y; p.x = G.x + x * c - y * sn; p.y = G.y + x * sn + y * c; }
 }
@@ -335,13 +338,14 @@ window.__cardScreen = (lx, ly) => {   // for tests: where a spot on the card is 
   const { C, up, right } = frame2D(), w = C.clone().addScaledVector(up, ly).addScaledVector(right, lx).project(camera), b = canvas.getBoundingClientRect();
   return { x: b.left + (w.x + 1) / 2 * b.width, y: b.top + (1 - w.y) / 2 * b.height };
 };
-window.__card = () => ({ spin, spinV, dragging, up: frame2D().up.toArray().map(n => +n.toFixed(3)) });   // read by tools/spin-test.mjs
+window.__card = () => ({ spin, spinV, pitch, dragging, up: frame2D().up.toArray().map(n => +n.toFixed(3)),
+  stretch, rotV, endDx: P[N - 2].x - P[N - 1].x, endDy: P[N - 2].y - P[N - 1].y, G: frame2D().G.toArray(), grab: grab.toArray(), rope: P.map(p => +p.x.toFixed(2)) });   // read by tools/spin-test.mjs
 
 function place() {
   const top = P[N - 1], up = top.clone().sub(bottom).normalize();
   const fwd = new THREE.Vector3(0, 0, 1).addScaledVector(up, -up.z).normalize();
   const right = new THREE.Vector3().crossVectors(up, fwd);
-  const basis = new THREE.Matrix4().makeBasis(right, up, fwd).multiply(new THREE.Matrix4().makeRotationY(spin));
+  const basis = new THREE.Matrix4().makeBasis(right, up, fwd).multiply(new THREE.Matrix4().makeRotationX(pitch)).multiply(new THREE.Matrix4().makeRotationY(spin));
   cardObj.matrix.copy(basis).setPosition(top.clone().add(bottom).multiplyScalar(.5).addScaledVector(up, -.12));
   const pos = bandGeo.attributes.position, uv = bandGeo.attributes.uv;
   let run = 0;
@@ -376,13 +380,51 @@ stage.addEventListener("pointermove", e => { if (dragging) grab.copy(toWorld(e))
 const release = e => {
   if (!dragging) return;
   dragging = false; stage.classList.remove("drag");
-  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 350) { spinTarget += Math.PI; flipLabel(); }   // tap: turn over
+  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 350) flipBtn.onclick();   // tap: turn over
 };
-// the turn-over button: the same half turn as a tap on the card, and it says which side you will see
-const flipBtn = $("#flip");
-const flipLabel = () => { flipBtn.querySelector("span").textContent = Math.cos(spinTarget) > 0 ? "See the back" : "See the front"; };
-flipBtn.addEventListener("pointerdown", e => e.stopPropagation());
-flipBtn.onclick = () => { spinTarget += Math.PI; flipLabel(); };
+// ---------- the turn control: look at the card from any angle ----------
+// Drag across the pad: sideways turns the card any amount, up/down tips it toward or away from you, and it stays
+// where you leave it so you can watch the foil. The arrows step it an eighth of a turn, or keep turning while held.
+// The last button turns it over (the same as a tap on the card).
+const flipBtn = $("#flip"), pad = $("#turnPad");
+const flipLabel = () => { flipBtn.querySelector("span").textContent = Math.cos(spinTarget) > 0 ? "Back" : "Front"; };
+const TURN_PX = 2 * Math.PI / 260;   // 260 px of drag is a full turn
+const MAX_PITCH = .75;
+$("#turn").addEventListener("pointerdown", e => e.stopPropagation());   // never grabs the card underneath
+let padDrag = null;
+pad.addEventListener("pointerdown", e => {
+  padDrag = { x: e.clientX, y: e.clientY, spin: spinTarget, pitch: pitchTarget };
+  turning = true; pad.setPointerCapture(e.pointerId); pad.classList.add("on");
+});
+pad.addEventListener("pointermove", e => {
+  if (!padDrag) return;
+  spinTarget = padDrag.spin + (e.clientX - padDrag.x) * TURN_PX;
+  pitchTarget = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, padDrag.pitch + (e.clientY - padDrag.y) * .006));
+  flipLabel();
+});
+const padEnd = () => { padDrag = null; turning = false; pad.classList.remove("on"); };
+pad.addEventListener("pointerup", padEnd); pad.addEventListener("pointercancel", padEnd);
+pad.addEventListener("keydown", e => {   // keyboard: arrows turn and tip
+  const k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (!k) return;
+  e.preventDefault(); spinTarget += k[0] * Math.PI / 12;
+  pitchTarget = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitchTarget + k[1] * .15)); flipLabel();
+});
+for (const [id, dir] of [["#turnL", -1], ["#turnR", 1]]) {
+  const b = $(id); let hold = null;
+  const stop = () => { clearTimeout(hold?.t); cancelAnimationFrame(hold?.raf); hold = null; turning = false; };
+  b.addEventListener("pointerdown", e => {
+    b.setPointerCapture(e.pointerId); turning = true;
+    spinTarget += dir * Math.PI / 4; flipLabel();   // a press: an eighth of a turn
+    hold = { t: setTimeout(() => {                  // held: keep turning, about a turn every three seconds
+      let prev = performance.now();
+      const run = now => { if (!hold) return; spinTarget += dir * 2.1 * (now - prev) / 1000; prev = now; flipLabel(); hold.raf = requestAnimationFrame(run); };
+      hold.raf = requestAnimationFrame(run);
+    }, 320) };
+  });
+  b.addEventListener("pointerup", stop); b.addEventListener("pointercancel", stop);
+}
+flipBtn.onclick = () => { spinTarget = Math.round(spinTarget / Math.PI) * Math.PI + Math.PI; pitchTarget = 0; flipLabel(); };
 stage.addEventListener("pointerup", release); stage.addEventListener("pointercancel", release);
 
 // ---------- fit + loop ----------
@@ -490,7 +532,7 @@ function draw2D(now) {
 
   // foil: the card's angle (turn, a little of the swing, phone/mouse tilt) slides the wash and twinkles the grain
   const up = P[N - 1].clone().sub(bottom).normalize(), t = holoU.uTilt.value, time = now / 1000;
-  const ax = Math.sin(spin) * 1.6 + up.x * .5 + t.x, ay = t.y;
+  const ax = Math.sin(spin) * 1.6 + up.x * .5 + t.x, ay = t.y + pitch * 1.4;
   const g = foilCv.getContext("2d");
   const grad = g.createLinearGradient(0, 0, iw * 1.1 / 1.25, ih * .6 / 1.25);   // along the same direction as the shader's wash
   for (let s = 0; s <= 24; s++) {

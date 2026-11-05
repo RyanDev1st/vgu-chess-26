@@ -79,7 +79,7 @@ h2 { font: 600 26px/1.15 var(--serif); margin-bottom: 14px; }
 .arrows { display: none; gap: 8px; }
 .arrows button { width: 36px; height: 36px; border-radius: 12px; border: 1px solid var(--line); background: rgba(242,239,233,.05); color: var(--ink); display: grid; place-items: center; cursor: pointer; }
 .arrows button:disabled { opacity: .3; cursor: default; }
-.ic.flip { transform: scaleX(-1); }
+.ic.mirror { transform: scaleX(-1); }
 .four a[aria-current="page"] img { filter: none; box-shadow: 0 0 0 1.5px var(--tier); }
 .four .pn { display: block; margin-top: 10px; font: 600 18px/1.2 var(--serif); }
 .four .pl { display: block; font-size: 12.5px; color: var(--faint); }
@@ -108,14 +108,24 @@ footer { margin-top: 44px; font-size: 12.5px; line-height: 1.7; color: var(--fai
   .four nav { cursor: grab; margin: 0; padding: 2px 0 6px; scroll-padding-inline: 0; }
   .arrows { display: flex; }
 }
-/* turn the card over without tapping it */
-.flip { position: absolute; z-index: 4; right: 16px; bottom: 14px; display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px 0 11px;
-        border-radius: 12px; border: 1px solid var(--line); background: rgba(11, 11, 12, .72); color: var(--ink); font: 600 13px var(--sans);
-        cursor: pointer; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-.flip .ic { width: 17px; height: 17px; }
-.flip:active { transform: scale(.97); }
-.flip:focus-visible { outline: 2px solid var(--tier); outline-offset: 3px; }
-@media (min-width: 960px) { .flip { right: 32px; bottom: 32px; } }
+/* the turn control under the card: drag the pad to look at the card from any angle */
+.turn { position: absolute; z-index: 4; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 4px;
+        border-radius: 14px; border: 1px solid var(--line); background: rgba(11, 11, 12, .72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+        color: var(--ink); font: 600 13px var(--sans); white-space: nowrap; }
+.turn button, .turn .pad { display: flex; align-items: center; justify-content: center; gap: 7px; height: 38px; border: 0; border-radius: 10px;
+        background: none; color: inherit; font: inherit; cursor: pointer; touch-action: none; -webkit-user-select: none; user-select: none; }
+.turn button { width: 38px; }
+.turn button:hover, .turn .pad:hover { background: rgba(242, 239, 233, .06); }
+.turn .pad { padding: 0 14px; min-width: 132px; background: rgba(242, 239, 233, .07); cursor: ew-resize; color: var(--dim); }
+.turn .pad.on { background: rgba(242, 239, 233, .14); color: var(--ink); cursor: grabbing; }
+.turn .over { width: auto; padding: 0 12px 0 10px; border-left: 1px solid var(--line); border-radius: 0 10px 10px 0; }
+.turn .ic { width: 17px; height: 17px; }
+.turn button:active { transform: scale(.94); }
+.turn :focus-visible { outline: 2px solid var(--tier); outline-offset: 2px; }
+.ic-ccw { --i: url(icons/rotate-ccw.svg); }
+.ic-cw { --i: url(icons/rotate-cw.svg); }
+.ic-arrows { --i: url(icons/arrows-h.svg); }
+@media (min-width: 960px) { .turn { bottom: 32px; } }
 @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
 
 #debug { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 9; margin: 0; padding: 10px; border-radius: 8px; background: rgba(0,0,0,.85); color: #9f9; font: 11px/1.4 "JB Mono", monospace; white-space: pre-wrap; }
