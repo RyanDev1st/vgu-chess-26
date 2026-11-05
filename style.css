@@ -54,6 +54,7 @@ section + section { margin-top: 44px; }
 
 h2 { font: 600 26px/1.15 var(--serif); margin-bottom: 14px; }
 
+.sample { margin: -8px 0 10px; font-size: 12.5px; color: var(--faint); }
 /* scoresheet: how a chess scoresheet reads, results as 1, ½, 0 */
 .sheet table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .sheet td, .sheet th { padding: 13px 0; text-align: left; font-weight: 400; }

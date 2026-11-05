@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=9";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=10";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "9", dbg = [];
+const VERSION = "10", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -75,6 +75,7 @@ if (card.rounds?.length) {   // a chess scoresheet: 1 for a win, ½ for a draw, 
     `<tr class="${esc(r.res)}"><td class="r">R${i + 1}</td><td>${esc(r.opp)}</td><td class="res">${pts[r.res] ?? ""}</td></tr>`).join("");
   $("#total").textContent = half(card.points ?? card.rounds.reduce((s, r) => s + ({ W: 1, D: .5 }[r.res] || 0), 0));
   $("#runWrap").hidden = false;
+  if (data.sample) $("#sample").hidden = false;   // never let sample results pass for real ones
 }
 
 // this year's four, as the real cards (trim area only, no print bleed)
@@ -135,8 +136,8 @@ if (renderer) {
 const scene = new THREE.Scene();
 if (renderer) scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 const camera = new THREE.PerspectiveCamera(25, 1, 0.1, 200);
-const light = new THREE.DirectionalLight(0xffffff, .55); light.position.set(3, 5, 8); scene.add(light);
-scene.add(new THREE.AmbientLight(0xffffff, .25));
+const light = new THREE.DirectionalLight(0x8fe6dc, .6);   // light off a holo laminate reads blue-green, not white light.position.set(3, 5, 8); scene.add(light);
+scene.add(new THREE.AmbientLight(0xb4e4e0, .25));
 
 const CW = 8.56, CH = 5.4, R = .318;   // card in scene units (1 = 10 mm), trim size
 const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1; return x; };
@@ -151,7 +152,7 @@ const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
 const holo = map => {
   const m = new THREE.MeshPhysicalMaterial({
     map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: .42,
-    roughness: .5, metalness: .1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: .2,
+    roughness: .5, metalness: .1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: .12, sheen: .6, sheenColor: 0x5fe0c8, sheenRoughness: .4,
   });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, holoU);
@@ -174,8 +175,13 @@ const holo = map => {
         float r2 = fract(sin(dot(cell, vec2(39.3468, 11.135))) * 24634.6345);
         float tw = pow(.5 + .5 * cos(6.2831 * (r2 + a.x * 1.9 + a.y * 1.4 + uTime * .02)), 24.) * step(.62, r1);   // only some flakes face the light   // a grain flashing as it turns
         vec3 spectrum = .5 + .5 * cos(6.2831 * (ph + r1 * .25 + vec3(0., .33, .67)));
+        spectrum = mix(spectrum, vec3(.18, .95, .82), .42);   // the foil reads blue-green when it catches light (as in the shop video)
+        vec3 hue = spectrum - vec3(dot(spectrum, vec3(.3333)));   // colour without extra brightness: light print turns blue-green instead of white
+        float k = foil * (.3 + .7 * catchL);
+        totalEmissiveRadiance *= mix(vec3(1.), vec3(.55, .95, 1.) * (.75 + .5 * spectrum), k * .8);   // the print itself shifts toward blue-green
+        totalEmissiveRadiance += k * hue * .9;
         float film = max(foil, ${f(FOIL.darkGlint)} * (1. - inPhoto));   // the glitter film covers all the print except the photo
-        totalEmissiveRadiance += foil * (vec3(${f(FOIL.silver)}) + spectrum * catchL * ${f(FOIL.glow)}) + film * spectrum * (.35 + .65 * catchL) * ${f(FOIL.sparkle)} * tw;
+        totalEmissiveRadiance += foil * (vec3(.45, .85, .9) * ${f(FOIL.silver)} + spectrum * catchL * ${f(FOIL.glow)}) + film * spectrum * (.35 + .65 * catchL) * ${f(FOIL.sparkle)} * tw;
       }`);
   };
   return m;
@@ -429,7 +435,7 @@ const foilMasks = img => {
     const xm = x / w * (W - 4) + 2, ym = y / h * (H - 4) + 2, inPhoto = xm > PHOTO[0] && xm < PHOTO[1] && ym < PHOTO[2];
     const foil = inPhoto ? 0 : smooth(.04, .35, lum) * (1 - .35 * smooth(.3, .9, (hi - lo) / (hi + .02)));
     const cx = Math.floor(x * gx), cy = Math.floor(y * gy), r2 = hash(cx, cy, [39.3468, 11.135, 24634.6345]);
-    sd.data[i] = sd.data[i + 1] = sd.data[i + 2] = 255; sd.data[i + 3] = foil * 255;
+    sd.data[i] = 115; sd.data[i + 1] = 217; sd.data[i + 2] = 230; sd.data[i + 3] = foil * 255;   // cyan-silver
     for (let k = 0; k < 3; k++) {
       const r1 = hash(cx, cy, [12.9898, 78.233, 43758.5453]), tw = r1 < .62 ? 0 : (.5 + .5 * Math.cos(2 * Math.PI * (r2 + k / 3))) ** 24, film = inPhoto ? 0 : Math.max(foil, FOIL.darkGlint);
       const d = data[k].data; d[i] = d[i + 1] = d[i + 2] = 255;
@@ -442,7 +448,8 @@ const foilMasks = img => {
 };
 const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map(img => ({ img, ...foilMasks(img) }));
 const foilCv = ctx2 && Object.assign(document.createElement("canvas"), { width: faces2[0].img.width, height: faces2[0].img.height });
-const washColour = ph => { const c = k => Math.round(255 * (.5 + .5 * Math.cos(2 * Math.PI * (ph + k)))); return [c(0), c(.33), c(.67)]; };
+const TINT = [.18, .95, .82];   // blue-green, as the shader
+const washColour = ph => [0, .33, .67].map((k, i) => Math.round(255 * ((.5 + .5 * Math.cos(2 * Math.PI * (ph + k))) * .58 + TINT[i] * .42)));
 
 function draw2D(now) {
   scene.updateMatrixWorld(); camera.updateMatrixWorld();
@@ -489,6 +496,10 @@ function draw2D(now) {
     ctx2.globalAlpha = wgt; ctx2.drawImage(foilCv, 0, 0);
   }
   ctx2.globalAlpha = .1; ctx2.drawImage(face.silver, 0, 0);   // the silver of the foil itself
+  // light print takes the foil's blue-green hue where the light catches it (colour, not brightness)
+  g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, iw, ih); g.fillStyle = grad; g.fillRect(0, 0, iw, ih);
+  g.globalCompositeOperation = "destination-in"; g.drawImage(face.silver, 0, 0);
+  ctx2.globalCompositeOperation = "color"; ctx2.globalAlpha = .55; ctx2.drawImage(foilCv, 0, 0);
   ctx2.restore();
   ctx2.globalCompositeOperation = "source-over"; ctx2.globalAlpha = 1;
 

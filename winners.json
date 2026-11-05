@@ -1,5 +1,5 @@
 {
-  "note": "MOCK for previewing (?demo). Names, majors, intakes, photos and places as given by the organiser. No scores or games yet: those stay empty until the final. lichess on card 1 is the organiser's test account.",
+  "note": "MOCK (?demo). Names, majors, intakes, photos and places from the organiser. The scoresheet is SAMPLE results (a consistent 6-player round robin of the six real players) until the final; the page labels it. lichess on card 1 is the organiser test account.",
   "club": "",
   "cards": {
     "1": {
@@ -8,8 +8,29 @@
       "majorShort": "CSE",
       "intake": "2024",
       "photo": "photos/1.png",
-      "points": null,
-      "rounds": [],
+      "points": 4.5,
+      "rounds": [
+        {
+          "opp": "Trần Đăng Trí",
+          "res": "W"
+        },
+        {
+          "opp": "Trần Phương Tùng",
+          "res": "W"
+        },
+        {
+          "opp": "Bùi Quang Minh",
+          "res": "W"
+        },
+        {
+          "opp": "Nguyễn Hoàng Minh",
+          "res": "D"
+        },
+        {
+          "opp": "Nguyễn Minh Khang",
+          "res": "W"
+        }
+      ],
       "lichess": "RyanNoob"
     },
     "2": {
@@ -18,8 +39,29 @@
       "majorShort": "CSE",
       "intake": "2024",
       "photo": "photos/2.png",
-      "points": null,
-      "rounds": []
+      "points": 4,
+      "rounds": [
+        {
+          "opp": "Trần Phương Tùng",
+          "res": "W"
+        },
+        {
+          "opp": "Nguyễn Hoàng Minh",
+          "res": "W"
+        },
+        {
+          "opp": "Trần Đăng Trí",
+          "res": "W"
+        },
+        {
+          "opp": "Bùi Quang Minh",
+          "res": "W"
+        },
+        {
+          "opp": "Dương Thành Nhân",
+          "res": "L"
+        }
+      ]
     },
     "3": {
       "name": "Nguyễn Hoàng Minh",
@@ -27,8 +69,29 @@
       "majorShort": "CSE",
       "intake": "2024",
       "photo": "photos/3.png",
-      "points": null,
-      "rounds": []
+      "points": 3.5,
+      "rounds": [
+        {
+          "opp": "Bùi Quang Minh",
+          "res": "W"
+        },
+        {
+          "opp": "Nguyễn Minh Khang",
+          "res": "L"
+        },
+        {
+          "opp": "Trần Phương Tùng",
+          "res": "W"
+        },
+        {
+          "opp": "Dương Thành Nhân",
+          "res": "D"
+        },
+        {
+          "opp": "Trần Đăng Trí",
+          "res": "W"
+        }
+      ]
     },
     "4": {
       "name": "Bùi Quang Minh",
@@ -36,8 +99,30 @@
       "majorShort": "CSE",
       "intake": "2026",
       "photo": "photos/4.png",
-      "points": null,
-      "rounds": []
+      "points": 2,
+      "rounds": [
+        {
+          "opp": "Nguyễn Hoàng Minh",
+          "res": "L"
+        },
+        {
+          "opp": "Trần Đăng Trí",
+          "res": "W"
+        },
+        {
+          "opp": "Dương Thành Nhân",
+          "res": "L"
+        },
+        {
+          "opp": "Nguyễn Minh Khang",
+          "res": "L"
+        },
+        {
+          "opp": "Trần Phương Tùng",
+          "res": "W"
+        }
+      ]
     }
-  }
+  },
+  "sample": true
 }
