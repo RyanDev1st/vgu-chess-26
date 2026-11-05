@@ -20,8 +20,15 @@ export async function fontsReady() {
     document.fonts.load(`500 20px ${SANS}`, "Khoa học Máy tính 2023"), document.fonts.load(`700 20px ${SANS}`, "VGU Chess 26"),
   ]);
 }
+// Card drawing runs on the CPU (willReadFrequently). Some Android GPUs (seen on a Vivo phone in Edge) silently drop
+// the photo layer when the canvas is GPU-accelerated; the CPU path draws the same pixels everywhere.
+export const CPU = { willReadFrequently: true };
+// Loads a picture and copies it into a CPU canvas, so the card never draws straight from a GPU-held image.
 export function loadImage(src) {
-  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => {
+    const c = Object.assign(document.createElement("canvas"), { width: i.naturalWidth, height: i.naturalHeight });
+    c.getContext("2d", CPU).drawImage(i, 0, 0); res(c);
+  }; i.onerror = rej; i.src = src; });
 }
 const half = p => String(p).replace(/\.5$/, "½").replace(/^0½$/, "½");
 
@@ -100,7 +107,7 @@ function record(rounds = []) {
 
 // ---------- FRONT ----------
 export function drawFront(canvas, card, photo, pxPerMm) {
-  const s = pxPerMm, ctx = canvas.getContext("2d");
+  const s = pxPerMm, ctx = canvas.getContext("2d", CPU);
   canvas.width = Math.round(W * s); canvas.height = Math.round(H * s);
   const t = TIERS[card.rank];
 
@@ -124,7 +131,7 @@ export function drawFront(canvas, card, photo, pxPerMm) {
   if (photo) {
     const h = 61, w = h * photo.width / photo.height;
     const m = document.createElement("canvas"); m.width = canvas.width; m.height = canvas.height;
-    const g = m.getContext("2d");
+    const g = m.getContext("2d", CPU);
     g.drawImage(photo, (cx - w / 2) * s, .4 * s, w * s, h * s);
     g.globalCompositeOperation = "destination-in";        // keep: the window, plus the head rising above it
     win(g); g.rect((px + 2) * s, 0, (pw - 4) * s, (py + 2) * s); g.fill();
@@ -135,7 +142,7 @@ export function drawFront(canvas, card, photo, pxPerMm) {
     // soft shadow, built by hand: a dark copy stamped in a small ring. (shadowBlur on a full-size layer gets dropped
     // by some phone GPUs, and with it the whole photo.)
     const sh = document.createElement("canvas"); sh.width = m.width; sh.height = m.height;
-    const sg = sh.getContext("2d"); sg.drawImage(m, 0, 0);
+    const sg = sh.getContext("2d", CPU); sg.drawImage(m, 0, 0);
     sg.globalCompositeOperation = "source-in"; sg.fillStyle = "#000"; sg.fillRect(0, 0, sh.width, sh.height);
     ctx.save(); ctx.globalAlpha = .07;
     for (let i = 0; i < 12; i++) { const a = i / 12 * 2 * Math.PI, r = .9 * s; ctx.drawImage(sh, Math.cos(a) * r, Math.sin(a) * r + .5 * s); }
@@ -181,7 +188,7 @@ function tapLine(ctx, s, t, x, y) {
 
 // ---------- BACK: the medal reverse, and the holder's signature ----------
 export function drawBack(canvas, card, photo, pxPerMm) {
-  const s = pxPerMm, ctx = canvas.getContext("2d");
+  const s = pxPerMm, ctx = canvas.getContext("2d", CPU);
   canvas.width = Math.round(W * s); canvas.height = Math.round(H * s);
   const t = TIERS[card.rank], cx = W / 2, cy = 25.4;
 
