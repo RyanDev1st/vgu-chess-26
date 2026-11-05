@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=18";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=19";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "18", dbg = [];
+const VERSION = "19", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -142,67 +142,41 @@ if (renderer) {
 const scene = new THREE.Scene();
 if (renderer) scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 const camera = new THREE.PerspectiveCamera(25, 1, 0.1, 200);
-const light = new THREE.DirectionalLight(0x8fe6dc, .6);   // light off a holo laminate reads blue-green, not white light.position.set(3, 5, 8); scene.add(light);
-scene.add(new THREE.AmbientLight(0xb4e4e0, .25));
+const light = new THREE.DirectionalLight(0xffffff, .55); light.position.set(3, 5, 8); scene.add(light);
+scene.add(new THREE.AmbientLight(0xffffff, .25));
 
 const CW = 8.56, CH = 5.4, R = .318;   // card in scene units (1 = 10 mm), trim size
 const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1; return x; };
-// Holographic foil, modelled on the shop's own video of these cards (.scratch/holo): the foil shows only where the
-// print is light and pale (there it reads as silver); saturated colour and black stay flat ink. Up close it is a fine
-// glitter: each grain catches the light at its own angle, so grains twinkle as the card moves, and broad washes of
-// yellow / green / cyan / pink slide across the light areas with the angle. Shared numbers with the 2D path below.
-const FOIL = { grain: [260, 168], wash: .9, silver: .1, glow: .45, sparkle: 1.6, darkGlint: .22 };   // darkGlint: the film's glints on dark print
-// Foil is a mirror: it lights up only around the spot where it reflects the light, and the rest reads as plain print.
-// Seen straight on that spot sits near the top-left (a ceiling light behind you); turning or tipping the card slides it
-// across. at: the spot face-on (card uv, y up); move: how far it slides per unit of angle; r: its size; floor: the foil
-// left away from it.
-const GLARE = { at: [.3, .74], move: .8, r: .12, floor: .1 };
-const glareAt = (ax, ay) => [GLARE.at[0] - ax * GLARE.move, GLARE.at[1] - ay * GLARE.move];
-// The photo stays plain print (foil on skin reads as a rash): no foil where card.js says the photo is (the window and
-// the head rising above it, exactly; a rectangle here used to leave a dead block above the head).
+// Holographic foil: a smooth film of colour over the whole card (the look chosen from the first mock, close to the real
+// product). Colour runs across the card in a soft rainbow and a broad band of light crosses it; both slide as the
+// card turns, swings or tilts, and drift slowly so a still card still shifts. Light print shows it most, dark print a
+// little. No glitter dots. The photo takes only the faint film, never the bright part (a rainbow face looks wrong).
+// Shared numbers with the 2D drawing below.
+const FILM = { dark: .07, light: .5, lumFrom: .12, lumTo: .75, drift: .035, photo: .07 };
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
-const holo = (map, photoMask) => {   // photoMask: the front only; the back is all foil
+const holo = (map, photoMask) => {   // photoMask: the front only
   const m = new THREE.MeshPhysicalMaterial({
     map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: .42,
-    roughness: .62, metalness: .1, clearcoat: .2, clearcoatRoughness: .3, envMapIntensity: .1, sheen: .15, sheenColor: 0x5fe0c8, sheenRoughness: .5,
+    roughness: .5, metalness: .1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: .2,
   });
   // three.js shares one compiled shader between materials whose onBeforeCompile reads the same; the front and back
-  // differ (the photo cut-out), so name them apart. Without this the back ran the front's shader: first the photo's
-  // cut-out showed on the back as a dead block, then (with the mask) the back lost its foil entirely.
+  // differ (the photo), so name them apart. (Without this the back once ran the front's shader and lost its foil.)
   m.customProgramCacheKey = () => photoMask ? "holo-front" : "holo-back";
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, holoU, photoMask ? { uPhotoMask: { value: photoMask } } : {});
     const f = n => n.toFixed(3);
-    // grain hash without sin(): fract(sin(big) * 43758) loses precision on many GPUs once the numbers grow, so the
-    // glitter died away from the card's bottom-left corner (it only showed along the left and bottom edges)
-    sh.fragmentShader = `uniform vec2 uTilt; uniform float uTime;${photoMask ? " uniform sampler2D uPhotoMask;" : ""}
-      float holoHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
-` + sh.fragmentShader.replace("#include <emissivemap_fragment>", `
+    sh.fragmentShader = `uniform vec2 uTilt; uniform float uTime;${photoMask ? " uniform sampler2D uPhotoMask;" : ""}\n` + sh.fragmentShader.replace("#include <emissivemap_fragment>", `
       #include <emissivemap_fragment>
       {
-        vec3 base = texture2D(map, vMapUv).rgb;                                   // linear colour of the print here
+        vec3 base = texture2D(map, vMapUv).rgb;
         float lum = dot(base, vec3(.299, .587, .114));
-        float hi = max(base.r, max(base.g, base.b)), lo = min(base.r, min(base.g, base.b));
-        float sat = (hi - lo) / (hi + .02);
         float inPhoto = ${photoMask ? "smoothstep(.15, .6, texture2D(uPhotoMask, vMapUv).a)" : "0."};
-        float foil = smoothstep(.04, .35, lum) * (1. - .35 * smoothstep(.3, .9, sat)) * (1. - inPhoto);   // light print = foil; not the photo
-        vec2 a = normal.xy * 1.6 + uTilt;                                          // the card's angle to the viewer
-        float ph = dot(vMapUv, vec2(1.1, .6)) + a.x * 1.3 + a.y * .9 + uTime * .03;
-        float catchL = smoothstep(.15, .85, .5 + .5 * sin(6.2831 * ph * ${f(FOIL.wash)}));   // broad lit / unlit washes
-        vec2 hot = vec2(${f(GLARE.at[0])}, ${f(GLARE.at[1])}) - a * ${f(GLARE.move)};
-        vec2 dh = (vMapUv - hot) * vec2(${f(W / H)}, 1.);                         // round on the card, not stretched
-        float lit = ${f(GLARE.floor)} + ${f(1 - GLARE.floor)} * exp(-dot(dh, dh) / ${f(GLARE.r)});   // near the reflection: full foil
-        vec2 cell = floor(vMapUv * vec2(${f(FOIL.grain[0])}, ${f(FOIL.grain[1])}));
-        float r1 = holoHash(cell), r2 = holoHash(cell + vec2(57.31, 113.7));
-        float tw = pow(.5 + .5 * cos(6.2831 * (r2 + a.x * 1.9 + a.y * 1.4 + uTime * .02)), 24.) * step(.62, r1);   // only some flakes face the light   // a grain flashing as it turns
-        vec3 spectrum = .5 + .5 * cos(6.2831 * (ph + r1 * .25 + vec3(0., .33, .67)));
-        spectrum = mix(spectrum, vec3(.18, .95, .82), .42);   // the foil reads blue-green when it catches light (as in the shop video)
-        vec3 hue = spectrum - vec3(dot(spectrum, vec3(.3333)));   // colour without extra brightness: light print turns blue-green instead of white
-        float k = foil * (.3 + .7 * catchL) * lit;
-        totalEmissiveRadiance *= mix(vec3(1.), vec3(.55, .95, 1.) * (.75 + .5 * spectrum), k * .8);   // the print itself shifts toward blue-green
-        totalEmissiveRadiance += k * hue * .9;
-        float film = max(foil, ${f(FOIL.darkGlint)} * (1. - inPhoto));   // the glitter film covers all the print except the photo
-        totalEmissiveRadiance += lit * (foil * (vec3(.45, .85, .9) * ${f(FOIL.silver)} + spectrum * catchL * ${f(FOIL.glow)}) + film * spectrum * (.35 + .65 * catchL) * ${f(FOIL.sparkle)} * tw);
+        vec2 a = normal.xy * 1.8 + uTilt;                                   // the card's angle to the viewer
+        float h = vMapUv.x * 1.1 - vMapUv.y * .6 + a.x * .9 + a.y * .6 + uTime * ${f(FILM.drift)};
+        vec3 rainbow = .5 + .5 * cos(6.2831 * (h + vec3(0., .33, .67)));
+        float band = .55 + .45 * sin(6.2831 * (vMapUv.x * .8 + vMapUv.y * .5 + a.x * .7 - a.y * .4));   // light catching in a moving band
+        float amt = mix(${f(FILM.dark)} + ${f(FILM.light)} * smoothstep(${f(FILM.lumFrom)}, ${f(FILM.lumTo)}, lum), ${f(FILM.photo)}, inPhoto) * band;
+        totalEmissiveRadiance += rainbow * amt;
       }`);
   };
   return m;
@@ -491,41 +465,34 @@ const trimOf = cv => {
   out.getContext("2d").drawImage(cv, 2 * k, 2 * k, (W - 4) * k, (H - 4) * k, 0, 0, out.width, out.height);
   return out;
 };
-// The foil in 2D, same model as the shader: foil = light, pale print; three glitter masks (the grain twinkling at three
-// moments) are cross-faded by angle, and multiplied by the sliding colour wash.
+// The film in 2D, same model as the shader: how much film each spot takes (from the print's lightness, and the photo)
+// is worked out once; each frame a rainbow gradient and the band of light are laid over it.
 const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
-const foilMasks = (img, photoMask) => {   // photoMask: where the photo is (front only)
+const filmMask = (img, photoMask) => {   // alpha = the film's strength at each spot (before the band)
   const w = img.width, h = img.height, src = document.createElement("canvas"); src.width = w; src.height = h;
   const sg = src.getContext("2d", { willReadFrequently: true }); sg.drawImage(img, 0, 0);
-  const px = sg.getImageData(0, 0, w, h).data, gx = FOIL.grain[0] / w, gy = FOIL.grain[1] / h;
+  const px = sg.getImageData(0, 0, w, h).data;
   let pm = null;
   if (photoMask) { sg.clearRect(0, 0, w, h); sg.drawImage(photoMask, 0, 0); pm = sg.getImageData(0, 0, w, h).data; }
-  const hash = (x, y, k) => { const v = Math.sin(x * k[0] + y * k[1]) * k[2]; return v - Math.floor(v); };
-  const masks = [0, 1, 2].map(() => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; });
-  const data = masks.map(c => c.getContext("2d").createImageData(w, h));
-  const silver = document.createElement("canvas"); silver.width = w; silver.height = h;
-  const sd = silver.getContext("2d").createImageData(w, h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = (y * w + x) * 4, r = (px[i] / 255) ** 2.2, g = (px[i + 1] / 255) ** 2.2, b = (px[i + 2] / 255) ** 2.2;
-    const lum = r * .299 + g * .587 + b * .114, hi = Math.max(r, g, b), lo = Math.min(r, g, b);
-    const inPhoto = pm ? pm[i + 3] > 90 : false;
-    const foil = inPhoto ? 0 : smooth(.04, .35, lum) * (1 - .35 * smooth(.3, .9, (hi - lo) / (hi + .02)));
-    const cx = Math.floor(x * gx), cy = Math.floor(y * gy), r2 = hash(cx, cy, [39.3468, 11.135, 24634.6345]);
-    sd.data[i] = 115; sd.data[i + 1] = 217; sd.data[i + 2] = 230; sd.data[i + 3] = foil * 255;   // cyan-silver
-    for (let k = 0; k < 3; k++) {
-      const r1 = hash(cx, cy, [12.9898, 78.233, 43758.5453]), tw = r1 < .62 ? 0 : (.5 + .5 * Math.cos(2 * Math.PI * (r2 + k / 3))) ** 24, film = inPhoto ? 0 : Math.max(foil, FOIL.darkGlint);
-      const d = data[k].data; d[i] = d[i + 1] = d[i + 2] = 255;
-      d[i + 3] = Math.min(1, (foil * FOIL.glow + film * FOIL.sparkle * tw) / (FOIL.glow + FOIL.sparkle) * 3.2) * 255;
-    }
+  const out = sg.createImageData(w, h), top = FILM.dark + FILM.light;   // alpha is stored relative to the strongest film
+  for (let i = 0; i < px.length; i += 4) {
+    const lum = (px[i] / 255) ** 2.2 * .299 + (px[i + 1] / 255) ** 2.2 * .587 + (px[i + 2] / 255) ** 2.2 * .114;
+    const ph = pm ? smooth(.15, .6, pm[i + 3] / 255) : 0;
+    const amt = (FILM.dark + FILM.light * smooth(FILM.lumFrom, FILM.lumTo, lum)) * (1 - ph) + FILM.photo * ph;
+    out.data[i] = out.data[i + 1] = out.data[i + 2] = 255; out.data[i + 3] = amt / top * 255;
   }
-  masks.forEach((c, k) => c.getContext("2d").putImageData(data[k], 0, 0));
-  silver.getContext("2d").putImageData(sd, 0, 0);
-  return { masks, silver };
+  const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").putImageData(out, 0, 0);
+  return c;
 };
-const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map((img, i) => ({ img, ...foilMasks(img, i === 0 ? trimOf(frontCv.photoMask) : null) }));
+const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map((img, i) => ({ img, film: filmMask(img, i === 0 ? trimOf(frontCv.photoMask) : null) }));
 const foilCv = ctx2 && Object.assign(document.createElement("canvas"), { width: faces2[0].img.width, height: faces2[0].img.height });
-const TINT = [.18, .95, .82];   // blue-green, as the shader
-const washColour = ph => [0, .33, .67].map((k, i) => Math.round(255 * ((.5 + .5 * Math.cos(2 * Math.PI * (ph + k))) * .58 + TINT[i] * .42)));
+// a canvas gradient along which the value is k = cx * x + cy * y, spanning the whole image
+const lineGrad = (g, w, h, cx, cy, colourAt, n = 24) => {
+  const ks = [[0, 0], [w, 0], [0, h], [w, h]].map(([x, y]) => cx * x + cy * y), k0 = Math.min(...ks), k1 = Math.max(...ks);
+  const l2 = cx * cx + cy * cy, gr = g.createLinearGradient(cx * k0 / l2, cy * k0 / l2, cx * k1 / l2, cy * k1 / l2);
+  for (let s = 0; s <= n; s++) gr.addColorStop(s / n, colourAt(k0 + (k1 - k0) * s / n));
+  return gr;
+};
 
 function draw2D(now) {
   scene.updateMatrixWorld(); camera.updateMatrixWorld();
@@ -572,34 +539,21 @@ function draw2D(now) {
   ctx2.save(); ctx2.shadowColor = "rgba(0,0,0,.55)"; ctx2.shadowBlur = 40; ctx2.shadowOffsetY = 18; ctx2.fillStyle = "#0b0b0c"; ctx2.fill(card); ctx2.restore();
   ctx2.save(); ctx2.clip(card); ctx2.drawImage(face.img, 0, 0);
 
-  // foil: the card's angle (turn, a little of the swing, phone/mouse tilt) slides the wash and twinkles the grain
+  // film: the card's angle (turn, a little of the swing, phone/mouse tilt) slides the rainbow and the band of light
   const up = P[N - 1].clone().sub(bottom).normalize(), t = holoU.uTilt.value, time = now / 1000;
-  const ax = Math.sin(spin) * 1.6 + up.x * .5 + t.x, ay = t.y + pitch * 1.4;
+  const ax = Math.sin(spin) * 1.8 + up.x * .5 + t.x, ay = t.y + pitch * 1.4;
   const g = foilCv.getContext("2d");
-  const grad = g.createLinearGradient(0, 0, iw * 1.1 / 1.25, ih * .6 / 1.25);   // along the same direction as the shader's wash
-  for (let s = 0; s <= 24; s++) {
-    const o = s / 24, ph = o * 1.25 + ax * 1.3 + ay * .9 + time * .03;
-    const catchL = smooth(.15, .85, .5 + .5 * Math.sin(2 * Math.PI * ph * FOIL.wash)), [r, gg, b] = washColour(ph);
-    grad.addColorStop(o, `rgb(${Math.round(r * catchL)},${Math.round(gg * catchL)},${Math.round(b * catchL)})`);
-  }
-  const phase = ((ax * 1.9 + ay * 1.4 + time * .02) % 1 + 1) % 1 * 3, k1 = Math.floor(phase) % 3, k2 = (k1 + 1) % 3, mix = phase - Math.floor(phase);
-  // the glare spot, as in the shader (a round falloff on the card)
-  const [hu, hv] = glareAt(ax, ay), sig = Math.sqrt(GLARE.r) * ih;
-  const glare = g.createRadialGradient(hu * iw, (1 - hv) * ih, 0, hu * iw, (1 - hv) * ih, sig * 2.2);
-  for (let s = 0; s <= 8; s++) { const d = s / 8 * 2.2; glare.addColorStop(s / 8, `rgba(0,0,0,${(GLARE.floor + (1 - GLARE.floor) * Math.exp(-d * d)).toFixed(3)})`); }
-  const spot = () => { g.globalCompositeOperation = "destination-in"; g.fillStyle = glare; g.fillRect(0, 0, iw, ih); };
-  ctx2.globalCompositeOperation = "lighter";
-  for (const [k, wgt] of [[k1, 1 - mix], [k2, mix]]) {
-    g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, iw, ih); g.fillStyle = grad; g.fillRect(0, 0, iw, ih);
-    g.globalCompositeOperation = "destination-in"; g.drawImage(face.masks[k], 0, 0); spot();
-    ctx2.globalAlpha = wgt; ctx2.drawImage(foilCv, 0, 0);
-  }
-  g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, iw, ih); g.drawImage(face.silver, 0, 0); spot();
-  ctx2.globalAlpha = .1; ctx2.drawImage(foilCv, 0, 0);   // the silver of the foil itself
-  // light print takes the foil's blue-green hue where the light catches it (colour, not brightness)
-  g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, iw, ih); g.fillStyle = grad; g.fillRect(0, 0, iw, ih);
-  g.globalCompositeOperation = "destination-in"; g.drawImage(face.silver, 0, 0); spot();
-  ctx2.globalCompositeOperation = "color"; ctx2.globalAlpha = .55; ctx2.drawImage(foilCv, 0, 0);
+  // image x = u * iw, y = (1 - v) * ih: the shader's h = 1.1u - .6v + ... and band = .8u + .5v + ... in image terms
+  const hue0 = -.6 + ax * .9 + ay * .6 + time * FILM.drift, band0 = .5 + ax * .7 - ay * .4;
+  g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, iw, ih);
+  g.fillStyle = lineGrad(g, iw, ih, 1.1 / iw, .6 / ih, k => `rgb(${[0, .33, .67].map(o => Math.round(255 * (.5 + .5 * Math.cos(2 * Math.PI * (hue0 + k + o))))).join(",")})`);
+  g.fillRect(0, 0, iw, ih);
+  g.globalCompositeOperation = "destination-in";   // the band of light
+  g.fillStyle = lineGrad(g, iw, ih, .8 / iw, -.5 / ih, k => `rgba(0,0,0,${(.55 + .45 * Math.sin(2 * Math.PI * (band0 + k))).toFixed(3)})`);
+  g.fillRect(0, 0, iw, ih);
+  g.drawImage(face.film, 0, 0);   // how much film each spot takes
+  ctx2.globalCompositeOperation = "lighter"; ctx2.globalAlpha = FILM.dark + FILM.light;
+  ctx2.drawImage(foilCv, 0, 0);
   ctx2.restore();
   ctx2.globalCompositeOperation = "source-over"; ctx2.globalAlpha = 1;
 
