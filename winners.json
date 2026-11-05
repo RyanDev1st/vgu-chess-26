@@ -1,0 +1,179 @@
+{
+  "note": "SAMPLE DATA for previewing (?demo). Not real results. Photo: promo-video clip 153627.",
+  "club": "",
+  "cards": {
+    "1": {
+      "name": "Dương Thành Nhân",
+      "points": 4.5,
+      "rounds": [
+        {
+          "opp": "Lê Bảo Ngọc",
+          "res": "W"
+        },
+        {
+          "opp": "Phạm Gia Huy",
+          "res": "W"
+        },
+        {
+          "opp": "Đỗ Thanh Tùng",
+          "res": "D"
+        },
+        {
+          "opp": "Võ Hoàng Long",
+          "res": "W"
+        },
+        {
+          "opp": "Ngô Quỳnh Anh",
+          "res": "W"
+        }
+      ],
+      "photo": "photos/demo.png",
+      "major": "Computer Science and Engineering",
+      "intake": "2024",
+      "lichess": "RyanNoob",
+      "majorShort": "CSE"
+    },
+    "2": {
+      "name": "Ngô Quỳnh Anh",
+      "points": 4,
+      "rounds": [
+        {
+          "opp": "Huỳnh Đức Trí",
+          "res": "W"
+        },
+        {
+          "opp": "Bùi Khánh Linh",
+          "res": "W"
+        },
+        {
+          "opp": "Võ Hoàng Long",
+          "res": "W"
+        },
+        {
+          "opp": "Đỗ Thanh Tùng",
+          "res": "W"
+        },
+        {
+          "opp": "Dương Thành Nhân",
+          "res": "L"
+        }
+      ],
+      "photo": "photos/demo.png",
+      "major": "Mechanical Engineering",
+      "intake": "2024",
+      "chesscom": "demo_quynhanh"
+    },
+    "3": {
+      "name": "Đỗ Thanh Tùng",
+      "points": 3.5,
+      "rounds": [
+        {
+          "opp": "Mai Phương Thảo",
+          "res": "W"
+        },
+        {
+          "opp": "Lý Nhật Nam",
+          "res": "W"
+        },
+        {
+          "opp": "Dương Thành Nhân",
+          "res": "D"
+        },
+        {
+          "opp": "Ngô Quỳnh Anh",
+          "res": "L"
+        },
+        {
+          "opp": "Phạm Gia Huy",
+          "res": "W"
+        }
+      ],
+      "photo": "photos/demo.png",
+      "major": "Business Administration",
+      "intake": "2022",
+      "lichess": ""
+    },
+    "4": {
+      "name": "Võ Hoàng Long",
+      "points": 3.5,
+      "rounds": [
+        {
+          "opp": "Đặng Thu Hà",
+          "res": "W"
+        },
+        {
+          "opp": "Lê Bảo Ngọc",
+          "res": "W"
+        },
+        {
+          "opp": "Ngô Quỳnh Anh",
+          "res": "L"
+        },
+        {
+          "opp": "Dương Thành Nhân",
+          "res": "L"
+        },
+        {
+          "opp": "Huỳnh Đức Trí",
+          "res": "W"
+        }
+      ],
+      "photo": "photos/demo.png",
+      "major": "Electrical Engineering",
+      "intake": "2025",
+      "lichess": ""
+    }
+  },
+  "standings": [
+    {
+      "rank": 1,
+      "name": "Dương Thành Nhân",
+      "points": 4.5
+    },
+    {
+      "rank": 2,
+      "name": "Ngô Quỳnh Anh",
+      "points": 4
+    },
+    {
+      "rank": 3,
+      "name": "Đỗ Thanh Tùng",
+      "points": 3.5
+    },
+    {
+      "rank": 4,
+      "name": "Võ Hoàng Long",
+      "points": 3.5
+    },
+    {
+      "rank": 5,
+      "name": "Phạm Gia Huy",
+      "points": 3
+    },
+    {
+      "rank": 6,
+      "name": "Lê Bảo Ngọc",
+      "points": 3
+    },
+    {
+      "rank": 7,
+      "name": "Huỳnh Đức Trí",
+      "points": 3
+    },
+    {
+      "rank": 8,
+      "name": "Bùi Khánh Linh",
+      "points": 2.5
+    },
+    {
+      "rank": 9,
+      "name": "Lý Nhật Nam",
+      "points": 2.5
+    },
+    {
+      "rank": 10,
+      "name": "Mai Phương Thảo",
+      "points": 2.5
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0c">
+<title>VGU Chess 26</title>
+<meta name="description" content="Verified winner card, VGU Sport Week 2026 Chess Tournament.">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+  <header class="top"><span class="lockup">VGU Chess <b>26</b></span></header>
+
+  <!-- the card on its lanyard: drag to swing, tap to turn it over -->
+  <section class="stage" aria-label="The card. Drag to swing it, tap to turn it over.">
+    <canvas id="gl"></canvas>
+    <img id="flat" alt="" hidden>
+  </section>
+
+  <main>
+    <section class="who">
+      <p class="place" id="place"></p>
+      <h1 id="name"></h1>
+      <p class="meta" id="meta"></p>
+      <p class="verified"><i class="ic ic-check"></i><span id="verified"></span></p>
+    </section>
+
+    <!-- for the person who scanned it -->
+    <section class="dare" id="actions" hidden>
+      <a class="btn primary" id="challenge"><i class="ic ic-knight"></i><span></span></a>
+      <p id="dare"></p>
+    </section>
+
+    <section class="sheet" id="runWrap" hidden>
+      <h2>Scoresheet</h2>
+      <table>
+        <tbody id="run"></tbody>
+        <tfoot><tr><td></td><th scope="row">Total</th><td id="total"></td></tr></tfoot>
+      </table>
+    </section>
+
+    <section class="four">
+      <h2>This year's four</h2>
+      <nav id="podium"></nav>
+    </section>
+
+    <section class="next">
+      <h2>Want one of these?</h2>
+      <p>Only the top four players get a card. Finish top four at the next tournament and the next one has your name on it.</p>
+      <a class="btn" id="club" hidden target="_blank" rel="noopener">Castlevania Club<i class="ic ic-next"></i></a>
+    </section>
+
+    <!-- for the winner: their own tools, kept out of the visitor's way -->
+    <details class="owner" id="owner" hidden>
+      <summary>This is my card</summary>
+      <div class="row">
+        <a class="btn" id="linkedin" target="_blank" rel="noopener"><i class="ic ic-linkedin"></i>Add to LinkedIn</a>
+        <button class="btn" id="save" type="button"><i class="ic ic-save"></i>Save image</button>
+      </div>
+      <p>LinkedIn adds it as a certificate that links back to this page.</p>
+    </details>
+
+    <footer>Castlevania Club, Vietnamese-German University<br>Sport Week 2026, 16 to 19 November</footer>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+/* Mobile first. Same language as the card: near-black, one metal per place, the serif only for names and headings.
+   One radius scale: 12px for anything you press, the card's own corner for card images. One accent: the place's metal. */
+:root {
+  --bg: #0b0b0c; --ink: #f2efe9; --dim: rgba(242, 239, 233, .64); --faint: rgba(242, 239, 233, .4);
+  --line: rgba(242, 239, 233, .13); --tier: #e9c46a;
+  --serif: "Cormorant Garamond", serif; --sans: "Be Vietnam Pro", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; }
+html { background: var(--bg); }
+body { color: var(--ink); font: 400 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+body::before { /* a faint pool of the place's metal under the card */
+  content: ""; position: absolute; inset: 0 0 auto; height: 560px; pointer-events: none; z-index: -1;
+  background: radial-gradient(55% 40% at 50% 62%, color-mix(in srgb, var(--tier) 9%, transparent), transparent 70%);
+}
+
+.top { position: absolute; inset: 0 0 auto; z-index: 2; padding: max(18px, env(safe-area-inset-top)) 22px 0; pointer-events: none; }
+.lockup { font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
+.lockup b { display: inline-block; font-size: 10.5px; border: 1.5px solid var(--ink); border-radius: 5px; padding: 0 5px; margin-left: 3px; translate: 0 -1px; }
+
+.stage { position: relative; height: min(118vw, 64svh, 600px); }
+#gl { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+#gl.drag { cursor: grabbing; }
+#flat { position: absolute; left: 50%; bottom: 8%; translate: -50% 0; width: min(88vw, 420px); border-radius: 4.5% / 7%; }
+
+main { max-width: 460px; margin: 0 auto; padding: 0 22px max(32px, env(safe-area-inset-bottom)); }
+section + section { margin-top: 44px; }
+
+/* who */
+.place { font-size: 14px; font-weight: 600; color: var(--tier); }
+.who h1 { font: 600 44px/1.02 var(--serif); letter-spacing: -.01em; margin-top: 4px; text-wrap: balance; }
+.meta { margin-top: 10px; color: var(--dim); text-wrap: balance; }
+.verified { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--dim); }
+.verified .ic { color: var(--tier); }
+
+.ic { display: inline-block; width: 18px; height: 18px; flex: none; background: currentColor; -webkit-mask: var(--i) center / contain no-repeat; mask: var(--i) center / contain no-repeat; }
+.ic-check { --i: url(icons/rosette-discount-check.svg); }
+.ic-knight { --i: url(icons/chess-knight.svg); }
+.ic-linkedin { --i: url(icons/brand-linkedin.svg); }
+.ic-save { --i: url(icons/download.svg); }
+.ic-next { --i: url(icons/chevron-right.svg); width: 16px; height: 16px; }
+
+.btn { display: flex; align-items: center; justify-content: center; gap: 9px; height: 52px; border-radius: 12px; font: 600 15px var(--sans);
+       color: var(--ink); background: rgba(242, 239, 233, .05); border: 1px solid var(--line); text-decoration: none; cursor: pointer;
+       transition: transform .18s cubic-bezier(.16, 1, .3, 1), background .18s; }
+.btn:active { transform: scale(.98); }
+.btn:focus-visible, .four a:focus-visible, .owner summary:focus-visible { outline: 2px solid var(--tier); outline-offset: 3px; }
+
+/* the dare */
+.dare { margin-top: 28px; }
+.btn.primary { height: 56px; font-size: 16px; color: #15110a; background: var(--tier); border-color: transparent; }
+.dare p { margin-top: 10px; font-size: 13.5px; color: var(--faint); text-align: center; }
+
+h2 { font: 600 26px/1.15 var(--serif); margin-bottom: 14px; }
+
+/* scoresheet: how a chess scoresheet reads, results as 1, ½, 0 */
+.sheet table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.sheet td, .sheet th { padding: 13px 0; text-align: left; font-weight: 400; }
+.sheet tbody tr + tr td { border-top: 1px solid var(--line); }
+.sheet .r { width: 34px; font-size: 12.5px; color: var(--faint); }
+.sheet .res { width: 40px; text-align: right; font: 600 17px var(--sans); color: var(--dim); }
+.sheet .W .res { color: var(--tier); }
+.sheet tfoot td, .sheet tfoot th { border-top: 1.5px solid var(--ink); padding-top: 14px; font-weight: 600; }
+.sheet #total { text-align: right; font: 600 20px var(--sans); }
+
+/* this year's four: the real cards, swipe sideways */
+.four nav { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 22px; margin: 0 -22px; padding: 2px 22px 6px; scrollbar-width: none; }
+.four nav::-webkit-scrollbar { display: none; }
+.four a { flex: 0 0 58%; scroll-snap-align: start; color: var(--ink); text-decoration: none; }
+.four img { display: block; width: 100%; aspect-ratio: 85.6 / 54; border-radius: 4.3% / 6.8%; opacity: .55; transition: opacity .2s; }
+.four a[aria-current="page"] img { opacity: 1; box-shadow: 0 0 0 1.5px var(--tier); }
+.four .pn { display: block; margin-top: 10px; font: 600 18px/1.2 var(--serif); }
+.four .pl { display: block; font-size: 12.5px; color: var(--faint); }
+
+.next p { color: var(--dim); max-width: 34ch; }
+.next .btn { margin-top: 18px; justify-content: space-between; padding: 0 18px; }
+
+.owner { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line); }
+.owner summary { list-style: none; cursor: pointer; font-size: 13.5px; color: var(--faint); text-decoration: underline; text-underline-offset: 4px; width: fit-content; }
+.owner summary::-webkit-details-marker { display: none; }
+.owner .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.owner p { margin-top: 10px; font-size: 13px; color: var(--faint); }
+
+footer { margin-top: 44px; font-size: 12.5px; line-height: 1.7; color: var(--faint); }
+
+@media (min-width: 760px) { .stage { height: min(70svh, 640px); } .four a { flex-basis: 46%; } }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
