@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=8";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=9";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "8", dbg = [];
+const VERSION = "9", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -91,6 +91,28 @@ const four = await Promise.all(["1", "2", "3", "4"].map(async n => {
     <span class="pn">${esc(c.name || "To be decided")}</span><span class="pl">${title(TIERS[n].label)}</span></a>`;
 }));
 $("#podium").innerHTML = four.join("");
+// This year's four scrolls sideways with a finger, a mouse wheel, a mouse drag, or the arrow buttons.
+{
+  const nav = $("#podium"), card = () => nav.querySelector("a").getBoundingClientRect().width + 12;
+  const sync = () => { $("#prev").disabled = nav.scrollLeft < 4; $("#next").disabled = nav.scrollLeft > nav.scrollWidth - nav.clientWidth - 4; };
+  $("#prev").onclick = () => nav.scrollBy({ left: -card(), behavior: "smooth" });
+  $("#next").onclick = () => nav.scrollBy({ left: card(), behavior: "smooth" });
+  nav.addEventListener("scroll", sync, { passive: true });
+  nav.addEventListener("wheel", e => {   // a vertical wheel scrolls the row while it can, then the page again
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY, max = nav.scrollWidth - nav.clientWidth;
+    if ((d > 0 && nav.scrollLeft < max - 1) || (d < 0 && nav.scrollLeft > 1)) { e.preventDefault(); nav.scrollLeft += d; }
+  }, { passive: false });
+  let drag = null;
+  nav.addEventListener("pointerdown", e => { if (e.pointerType === "mouse" && e.button === 0) drag = { x: e.clientX, left: nav.scrollLeft, moved: false }; });
+  addEventListener("pointermove", e => {
+    if (!drag) return;
+    if (Math.abs(e.clientX - drag.x) > 5 && !drag.moved) { drag.moved = true; nav.classList.add("grabbing"); }
+    if (drag.moved) nav.scrollLeft = drag.left - (e.clientX - drag.x);
+  });
+  addEventListener("pointerup", () => { if (drag?.moved) setTimeout(() => nav.classList.remove("grabbing")); drag = null; });
+  nav.addEventListener("dragstart", e => e.preventDefault());
+  requestAnimationFrame(sync);
+}
 { const nav = $("#podium"), cur = nav.querySelector("[aria-current]"); if (cur) nav.scrollLeft = cur.getBoundingClientRect().left - nav.getBoundingClientRect().left - 22; }
 
 // ---------- the card in 3D ----------
@@ -118,33 +140,42 @@ scene.add(new THREE.AmbientLight(0xffffff, .25));
 
 const CW = 8.56, CH = 5.4, R = .318;   // card in scene units (1 = 10 mm), trim size
 const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.SRGBColorSpace; x.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 1; return x; };
-// Holographic foil, like the printed laminate: a rainbow that slides across the card as its angle to you changes
-// (card swing + phone tilt), strongest on the light parts (metal, fine lines, type), with fine diffraction sparkle.
+// Holographic foil, modelled on the shop's own video of these cards (.scratch/holo): the foil shows only where the
+// print is light and pale (there it reads as silver); saturated colour and black stay flat ink. Up close it is a fine
+// glitter: each grain catches the light at its own angle, so grains twinkle as the card moves, and broad washes of
+// yellow / green / cyan / pink slide across the light areas with the angle. Shared numbers with the 2D path below.
+const FOIL = { grain: [260, 168], wash: .9, silver: .1, glow: .45, sparkle: 1.6, darkGlint: .22 };   // darkGlint: the film's glints on dark print
+// The photo stays plain print (foil on skin reads as a rash): no foil inside the portrait window, in card mm incl. bleed.
+const PHOTO = [9.4, 38.2, 52.4];   // x from, x to, y down to
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
 const holo = map => {
   const m = new THREE.MeshPhysicalMaterial({
     map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: .42,
     roughness: .5, metalness: .1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: .2,
-    
   });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, holoU);
+    const f = n => n.toFixed(3);
     sh.fragmentShader = "uniform vec2 uTilt; uniform float uTime;\n" + sh.fragmentShader.replace("#include <emissivemap_fragment>", `
       #include <emissivemap_fragment>
       {
-        vec3 base = texture2D(map, vMapUv).rgb;
+        vec3 base = texture2D(map, vMapUv).rgb;                                   // linear colour of the print here
         float lum = dot(base, vec3(.299, .587, .114));
-        vec2 a = normal.xy * 1.6 + uTilt;                                   // the card's angle to the viewer
-        // Real holo laminate: the card looks normal until light hits it, then ONE narrow streak of spectrum crosses it,
-        // sliding as the angle changes. Colour runs along the streak, as in a diffraction foil.
-        float d = vMapUv.x * .85 + vMapUv.y * .45 - .65 + a.x * .55 - a.y * .35 + sin(uTime * .55) * .45;   // where the glint sits; it also drifts slowly, as room light would
-        float streak = exp(-d * d * 160.);                                   // a thin, soft-edged glint
-        vec3 spectrum = .5 + .5 * cos(6.2831 * (d * 2.4 + vMapUv.y * .5 + vec3(0., .33, .67)));
-        float lit = .45 + .55 * smoothstep(.04, .5, lum);   // the film covers the whole card; light print shows it most                     // foil shows on the metal, the fine lines and the type
-        vec2 cell = floor(vMapUv * vec2(520., 340.));
-        float rnd = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
-        float spark = step(.993, fract(rnd + a.x * 2.3 + a.y * 1.7)) * (.3 + streak);   // the odd diffraction glint
-        totalEmissiveRadiance += spectrum * (streak * lit * .3 + spark * lit * .2);
+        float hi = max(base.r, max(base.g, base.b)), lo = min(base.r, min(base.g, base.b));
+        float sat = (hi - lo) / (hi + .02);
+        float xm = vMapUv.x * ${f(W)}, ym = (1. - vMapUv.y) * ${f(H)};
+        float inPhoto = step(${f(PHOTO[0])}, xm) * step(xm, ${f(PHOTO[1])}) * step(ym, ${f(PHOTO[2])});
+        float foil = smoothstep(.04, .35, lum) * (1. - .35 * smoothstep(.3, .9, sat)) * (1. - inPhoto);   // light print = foil; not the photo
+        vec2 a = normal.xy * 1.6 + uTilt;                                          // the card's angle to the viewer
+        float ph = dot(vMapUv, vec2(1.1, .6)) + a.x * 1.3 + a.y * .9 + uTime * .03;
+        float catchL = smoothstep(.15, .85, .5 + .5 * sin(6.2831 * ph * ${f(FOIL.wash)}));   // broad lit / unlit washes
+        vec2 cell = floor(vMapUv * vec2(${f(FOIL.grain[0])}, ${f(FOIL.grain[1])}));
+        float r1 = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+        float r2 = fract(sin(dot(cell, vec2(39.3468, 11.135))) * 24634.6345);
+        float tw = pow(.5 + .5 * cos(6.2831 * (r2 + a.x * 1.9 + a.y * 1.4 + uTime * .02)), 24.) * step(.62, r1);   // only some flakes face the light   // a grain flashing as it turns
+        vec3 spectrum = .5 + .5 * cos(6.2831 * (ph + r1 * .25 + vec3(0., .33, .67)));
+        float film = max(foil, ${f(FOIL.darkGlint)} * (1. - inPhoto));   // the glitter film covers all the print except the photo
+        totalEmissiveRadiance += foil * (vec3(${f(FOIL.silver)}) + spectrum * catchL * ${f(FOIL.glow)}) + film * spectrum * (.35 + .65 * catchL) * ${f(FOIL.sparkle)} * tw;
       }`);
   };
   return m;
@@ -208,19 +239,29 @@ const bottomOld = bottom.clone().add(new THREE.Vector3(reduce ? 0 : .025, reduce
 let spin = reduce ? 0 : -1.15 * Math.PI, spinV = 0, spinTarget = 0, dragging = false;
 const grab = new THREE.Vector3(), gravity = new THREE.Vector3(0, -32, 0);
 const tilt = new THREE.Vector2();   // phone tilt (or mouse position on a computer) drives the foil rainbow
-addEventListener("deviceorientation", e => { if (e.gamma == null) return; gravity.x = Math.max(-1, Math.min(1, e.gamma / 30)) * 10; tilt.set(e.gamma / 45, (e.beta - 45) / 45); });
+// Tilt counts only as a change from how the phone is being held (a slow-moving baseline), so a phone held at an
+// angle does not make the card lean to one side for good. Tilting it moves the card and the foil.
+const base = { g: null, b: null };
+addEventListener("deviceorientation", e => {
+  if (e.gamma == null) return;
+  if (base.g == null) { base.g = e.gamma; base.b = e.beta; }
+  base.g += (e.gamma - base.g) * .015; base.b += (e.beta - base.b) * .015;
+  const dg = e.gamma - base.g, db = e.beta - base.b;
+  gravity.x = Math.max(-1, Math.min(1, dg / 25)) * 7;
+  tilt.set(dg / 30, db / 30);
+});
 addEventListener("pointermove", e => { if (e.pointerType === "mouse") tilt.set(e.clientX / innerWidth - .5, e.clientY / innerHeight - .5); });
 
 function step(dt) {
   if (anchor.y > 0) anchor.y = Math.max(0, anchor.y - DROP_V * dt);   // the entrance: lowering the clip
   const all = [...P.map((p, i) => [p, O[i]]), [bottom, bottomOld]];
   for (const [i, [p, o]] of all.entries()) {
-    if (i === 0 || (dragging && i === N - 1)) continue;
+    if (i === 0) continue;
     const v = p.clone().sub(o).multiplyScalar(.993);
     v.x = Math.max(-.07, Math.min(.07, v.x)); v.z = Math.max(-.07, Math.min(.07, v.z)); v.y = Math.min(v.y, .035);   // a flick swings it, never throws it over the top; falling is never slowed   // air drag: a swing fades over about two seconds
     o.copy(p); p.add(v).addScaledVector(gravity, dt * dt);
   }
-  if (dragging) { O[N - 1].copy(P[N - 1]); P[N - 1].lerp(grab, .35); }
+  if (dragging) holdTurn(dt);
   for (let k = 0; k < 24; k++) {
     P[0].copy(anchor);
     for (let i = 0; i < N - 1; i++) {
@@ -230,7 +271,8 @@ function step(dt) {
       if (i === 0) b.addScaledVector(d, -diff); else { a.addScaledVector(d, diff / 2); b.addScaledVector(d, -diff / 2); }
     }
     const d = bottom.clone().sub(P[N - 1]), len = d.length(), diff = (len - CH) / len;   // the card is rigid
-    if (dragging) bottom.addScaledVector(d, -diff); else { P[N - 1].addScaledVector(d, diff * .3); bottom.addScaledVector(d, -diff * .7); }
+    if (dragging) { P[N - 1].addScaledVector(d, diff * .5); bottom.addScaledVector(d, -diff * .5); pin(); }
+    else { P[N - 1].addScaledVector(d, diff * .3); bottom.addScaledVector(d, -diff * .7); }
   }
   // turning: the band's twist pulls the card back to face you. While held, the card only follows the hand:
   // no spin is added (this was the "spins like mad when held" bug: every drag frame used to add more spin).
@@ -243,7 +285,46 @@ function step(dt) {
   spin += spinV * dt;
 }
 
-window.__card = () => ({ spin, spinV, dragging });   // read by tools/spin-test.mjs
+// ---------- holding the card where the finger is ----------
+// held = the touched spot in card coordinates (lx across, ly up from the centre). While held, that spot stays under
+// the finger and gravity turns the card around it: hold the right edge and the left side drops; hold the middle and
+// it stays level; hold near the clip and it hangs.
+const held = { lx: 0, ly: 0 };
+let rotV = 0;
+const frame2D = () => {
+  const T = P[N - 1], up = T.clone().sub(bottom).normalize(), right = new THREE.Vector3(up.y, -up.x, 0);
+  const C = T.clone().add(bottom).multiplyScalar(.5);
+  return { T, up, right, C, G: C.clone().addScaledVector(up, held.ly).addScaledVector(right, held.lx * Math.cos(spin)) };
+};
+function pin() {   // move the card (no turn) so the held spot is under the finger, never further than the band reaches
+  const { G } = frame2D(), d = grab.clone().sub(G);
+  P[N - 1].add(d); bottom.add(d);
+  // The band holds the clip: if the clip would end up beyond the band's reach, the card turns around the held spot
+  // (it does not slide off the finger). Only when no turn can help (the finger is out of range) does it give way.
+  const reach = (N - 1) * SEG, over = P[N - 1].distanceTo(anchor) - reach;
+  if (over > 0) {
+    const g = frame2D().G, r = P[N - 1].clone().sub(g), toA = anchor.clone().sub(P[N - 1]);
+    const lever = Math.max(.5, r.length());
+    if (g.distanceTo(anchor) < reach + lever * .98) {
+      const a = Math.sign(r.x * toA.y - r.y * toA.x) * Math.min(.3, over / lever), c = Math.cos(a), sn = Math.sin(a);
+      for (const p of [P[N - 1], bottom]) { const x = p.x - g.x, y = p.y - g.y; p.x = g.x + x * c - y * sn; p.y = g.y + x * sn + y * c; }
+      rotV *= .6;
+    } else { const back = toA.setLength(over); P[N - 1].add(back); bottom.add(back); }
+  }
+}
+function holdTurn(dt) {   // gravity's turn around the held spot
+  const { C, G } = frame2D(), v = C.clone().sub(G);
+  rotV += -v.x * 9 * dt;                 // centre left of the finger: turns anticlockwise, so it swings down
+  rotV *= Math.exp(-5 * dt);
+  const a = rotV * dt, c = Math.cos(a), sn = Math.sin(a);
+  for (const p of [P[N - 1], bottom]) { const x = p.x - G.x, y = p.y - G.y; p.x = G.x + x * c - y * sn; p.y = G.y + x * sn + y * c; }
+}
+
+window.__cardScreen = (lx, ly) => {   // for tests: where a spot on the card is on screen
+  const { C, up, right } = frame2D(), w = C.clone().addScaledVector(up, ly).addScaledVector(right, lx).project(camera), b = canvas.getBoundingClientRect();
+  return { x: b.left + (w.x + 1) / 2 * b.width, y: b.top + (1 - w.y) / 2 * b.height };
+};
+window.__card = () => ({ spin, spinV, dragging, up: frame2D().up.toArray().map(n => +n.toFixed(3)) });   // read by tools/spin-test.mjs
 
 function place() {
   const top = P[N - 1], up = top.clone().sub(bottom).normalize();
@@ -274,11 +355,13 @@ stage.addEventListener("pointerdown", e => {
   setNdc(e);
   if (!ray.intersectObject(cardObj, true).length) return;
   window.DeviceOrientationEvent?.requestPermission?.().catch(() => {});   // iPhone asks for tilt on the first touch
-  down = { x: e.clientX, y: e.clientY, t: performance.now(), off: P[N - 1].clone().sub(toWorld(e)) };
-  dragging = true; stage.classList.add("drag"); stage.setPointerCapture(e.pointerId);
-  grab.copy(P[N - 1]);
+  const f = toWorld(e), { up, right, C } = frame2D(), rel = f.clone().sub(C), cs = Math.cos(spin);
+  held.ly = rel.dot(up); held.lx = Math.abs(cs) > .2 ? rel.dot(right) / cs : 0;
+  down = { x: e.clientX, y: e.clientY, t: performance.now() };
+  dragging = true; rotV = 0; stage.classList.add("drag"); stage.setPointerCapture(e.pointerId);
+  grab.copy(f);
 });
-stage.addEventListener("pointermove", e => { if (!dragging) return; grab.copy(toWorld(e).add(down.off)); grab.y = Math.min(grab.y, -1.5); });
+stage.addEventListener("pointermove", e => { if (dragging) grab.copy(toWorld(e)); });
 const release = e => {
   if (!dragging) return;
   dragging = false; stage.classList.remove("drag");
@@ -328,19 +411,38 @@ const trimOf = cv => {
   out.getContext("2d").drawImage(cv, 2 * k, 2 * k, (W - 4) * k, (H - 4) * k, 0, 0, out.width, out.height);
   return out;
 };
-const lightMask = img => {   // white where the card is light (metal, lines, type), clear where it is dark
-  const m = Object.assign(document.createElement("canvas"), { width: img.width, height: img.height }), g = m.getContext("2d", { willReadFrequently: true });
-  g.drawImage(img, 0, 0);
-  const d = g.getImageData(0, 0, m.width, m.height), px = d.data;
-  for (let i = 0; i < px.length; i += 4) {
-    const l = (px[i] * .299 + px[i + 1] * .587 + px[i + 2] * .114) / 255, t = Math.min(1, Math.max(0, (l - .12) / .48));
-    px[i] = px[i + 1] = px[i + 2] = 255; px[i + 3] = (.45 + .55 * t * t * (3 - 2 * t)) * 255;
+// The foil in 2D, same model as the shader: foil = light, pale print; three glitter masks (the grain twinkling at three
+// moments) are cross-faded by angle, and multiplied by the sliding colour wash.
+const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+const foilMasks = img => {
+  const w = img.width, h = img.height, src = document.createElement("canvas"); src.width = w; src.height = h;
+  const sg = src.getContext("2d", { willReadFrequently: true }); sg.drawImage(img, 0, 0);
+  const px = sg.getImageData(0, 0, w, h).data, gx = FOIL.grain[0] / w, gy = FOIL.grain[1] / h;
+  const hash = (x, y, k) => { const v = Math.sin(x * k[0] + y * k[1]) * k[2]; return v - Math.floor(v); };
+  const masks = [0, 1, 2].map(() => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; });
+  const data = masks.map(c => c.getContext("2d").createImageData(w, h));
+  const silver = document.createElement("canvas"); silver.width = w; silver.height = h;
+  const sd = silver.getContext("2d").createImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4, r = (px[i] / 255) ** 2.2, g = (px[i + 1] / 255) ** 2.2, b = (px[i + 2] / 255) ** 2.2;
+    const lum = r * .299 + g * .587 + b * .114, hi = Math.max(r, g, b), lo = Math.min(r, g, b);
+    const xm = x / w * (W - 4) + 2, ym = y / h * (H - 4) + 2, inPhoto = xm > PHOTO[0] && xm < PHOTO[1] && ym < PHOTO[2];
+    const foil = inPhoto ? 0 : smooth(.04, .35, lum) * (1 - .35 * smooth(.3, .9, (hi - lo) / (hi + .02)));
+    const cx = Math.floor(x * gx), cy = Math.floor(y * gy), r2 = hash(cx, cy, [39.3468, 11.135, 24634.6345]);
+    sd.data[i] = sd.data[i + 1] = sd.data[i + 2] = 255; sd.data[i + 3] = foil * 255;
+    for (let k = 0; k < 3; k++) {
+      const r1 = hash(cx, cy, [12.9898, 78.233, 43758.5453]), tw = r1 < .62 ? 0 : (.5 + .5 * Math.cos(2 * Math.PI * (r2 + k / 3))) ** 24, film = inPhoto ? 0 : Math.max(foil, FOIL.darkGlint);
+      const d = data[k].data; d[i] = d[i + 1] = d[i + 2] = 255;
+      d[i + 3] = Math.min(1, (foil * FOIL.glow + film * FOIL.sparkle * tw) / (FOIL.glow + FOIL.sparkle) * 3.2) * 255;
+    }
   }
-  g.putImageData(d, 0, 0); return m;
+  masks.forEach((c, k) => c.getContext("2d").putImageData(data[k], 0, 0));
+  silver.getContext("2d").putImageData(sd, 0, 0);
+  return { masks, silver };
 };
-const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map(img => ({ img, mask: lightMask(img) }));
+const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map(img => ({ img, ...foilMasks(img) }));
 const foilCv = ctx2 && Object.assign(document.createElement("canvas"), { width: faces2[0].img.width, height: faces2[0].img.height });
-const SPECTRUM = ["#ff4d8a", "#ffb84d", "#f4ff6b", "#59ffb0", "#4dc3ff", "#9a6bff"];
+const washColour = ph => { const c = k => Math.round(255 * (.5 + .5 * Math.cos(2 * Math.PI * (ph + k)))); return [c(0), c(.33), c(.67)]; };
 
 function draw2D(now) {
   scene.updateMatrixWorld(); camera.updateMatrixWorld();
@@ -369,20 +471,24 @@ function draw2D(now) {
   ctx2.save(); ctx2.shadowColor = "rgba(0,0,0,.55)"; ctx2.shadowBlur = 40; ctx2.shadowOffsetY = 18; ctx2.fillStyle = "#0b0b0c"; ctx2.fill(card); ctx2.restore();
   ctx2.save(); ctx2.clip(card); ctx2.drawImage(face.img, 0, 0);
 
-  // foil streak: where it sits depends on the swing, the turn and the phone/mouse tilt
-  const up = P[N - 1].clone().sub(bottom).normalize();
-  const t = holoU.uTilt.value, d0 = .5 + up.x * 1.4 + Math.sin(spin) * .5 + t.x * .45 - t.y * .3 + Math.sin(now / 1000 * .55) * .45;
+  // foil: the card's angle (turn, a little of the swing, phone/mouse tilt) slides the wash and twinkles the grain
+  const up = P[N - 1].clone().sub(bottom).normalize(), t = holoU.uTilt.value, time = now / 1000;
+  const ax = Math.sin(spin) * 1.6 + up.x * .5 + t.x, ay = t.y;
   const g = foilCv.getContext("2d");
-  g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, iw, ih);
-  const dx = iw * .85, dy = ih * .45, grad = g.createLinearGradient(0, 0, dx, dy);
-  const stop = (o, c) => { if (o > 0 && o < 1) grad.addColorStop(o, c); };
-  grad.addColorStop(0, "rgba(0,0,0,0)"); grad.addColorStop(1, "rgba(0,0,0,0)");
-  stop(d0 - .09, "rgba(0,0,0,0)");
-  SPECTRUM.forEach((c, i) => stop(d0 - .06 + i * .024, c));
-  stop(d0 + .09, "rgba(0,0,0,0)");
-  g.fillStyle = grad; g.fillRect(0, 0, iw, ih);
-  g.globalCompositeOperation = "destination-in"; g.drawImage(face.mask, 0, 0);
-  ctx2.globalCompositeOperation = "screen"; ctx2.globalAlpha = .55; ctx2.drawImage(foilCv, 0, 0);
+  const grad = g.createLinearGradient(0, 0, iw * 1.1 / 1.25, ih * .6 / 1.25);   // along the same direction as the shader's wash
+  for (let s = 0; s <= 24; s++) {
+    const o = s / 24, ph = o * 1.25 + ax * 1.3 + ay * .9 + time * .03;
+    const catchL = smooth(.15, .85, .5 + .5 * Math.sin(2 * Math.PI * ph * FOIL.wash)), [r, gg, b] = washColour(ph);
+    grad.addColorStop(o, `rgb(${Math.round(r * catchL)},${Math.round(gg * catchL)},${Math.round(b * catchL)})`);
+  }
+  const phase = ((ax * 1.9 + ay * 1.4 + time * .02) % 1 + 1) % 1 * 3, k1 = Math.floor(phase) % 3, k2 = (k1 + 1) % 3, mix = phase - Math.floor(phase);
+  ctx2.globalCompositeOperation = "lighter";
+  for (const [k, wgt] of [[k1, 1 - mix], [k2, mix]]) {
+    g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, iw, ih); g.fillStyle = grad; g.fillRect(0, 0, iw, ih);
+    g.globalCompositeOperation = "destination-in"; g.drawImage(face.masks[k], 0, 0);
+    ctx2.globalAlpha = wgt; ctx2.drawImage(foilCv, 0, 0);
+  }
+  ctx2.globalAlpha = .1; ctx2.drawImage(face.silver, 0, 0);   // the silver of the foil itself
   ctx2.restore();
   ctx2.globalCompositeOperation = "source-over"; ctx2.globalAlpha = 1;
 

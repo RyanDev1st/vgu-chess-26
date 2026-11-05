@@ -1,9 +1,9 @@
 {
-  "note": "MOCK for previewing (?demo). Real names and photos given by the organiser; the place order is the order they were given in, not a result. No scores or games yet: those fields stay empty until the final. lichess on card 1 is the organiser's test account.",
+  "note": "MOCK for previewing (?demo). Names, majors, intakes, photos and places as given by the organiser. No scores or games yet: those stay empty until the final. lichess on card 1 is the organiser's test account.",
   "club": "",
   "cards": {
     "1": {
-      "name": "Nguyễn Hoàng Minh",
+      "name": "Dương Thành Nhân",
       "major": "Computer Science and Engineering",
       "majorShort": "CSE",
       "intake": "2024",
@@ -13,7 +13,7 @@
       "lichess": "RyanNoob"
     },
     "2": {
-      "name": "Nguyen Minh Khang",
+      "name": "Nguyễn Minh Khang",
       "major": "Computer Science and Engineering",
       "majorShort": "CSE",
       "intake": "2024",
@@ -22,19 +22,19 @@
       "rounds": []
     },
     "3": {
-      "name": "Bui Quang Minh",
+      "name": "Nguyễn Hoàng Minh",
       "major": "Computer Science and Engineering",
       "majorShort": "CSE",
-      "intake": "2026",
+      "intake": "2024",
       "photo": "photos/3.png",
       "points": null,
       "rounds": []
     },
     "4": {
-      "name": "Tran Dang Tri",
+      "name": "Bùi Quang Minh",
       "major": "Computer Science and Engineering",
       "majorShort": "CSE",
-      "intake": "2024",
+      "intake": "2026",
       "photo": "photos/4.png",
       "points": null,
       "rounds": []
