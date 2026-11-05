@@ -39,6 +39,7 @@ section + section { margin-top: 44px; }
 .ic-knight { --i: url(icons/chess-knight.svg); }
 .ic-linkedin { --i: url(icons/brand-linkedin.svg); }
 .ic-save { --i: url(icons/download.svg); }
+.ic-rotate { --i: url(icons/rotate-3d.svg); }
 .ic-next { --i: url(icons/chevron-right.svg); width: 16px; height: 16px; }
 
 .btn { display: flex; align-items: center; justify-content: center; gap: 9px; height: 52px; border-radius: 12px; font: 600 15px var(--sans);
@@ -107,6 +108,14 @@ footer { margin-top: 44px; font-size: 12.5px; line-height: 1.7; color: var(--fai
   .four nav { cursor: grab; margin: 0; padding: 2px 0 6px; scroll-padding-inline: 0; }
   .arrows { display: flex; }
 }
+/* turn the card over without tapping it */
+.flip { position: absolute; z-index: 4; right: 16px; bottom: 14px; display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px 0 11px;
+        border-radius: 12px; border: 1px solid var(--line); background: rgba(11, 11, 12, .72); color: var(--ink); font: 600 13px var(--sans);
+        cursor: pointer; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.flip .ic { width: 17px; height: 17px; }
+.flip:active { transform: scale(.97); }
+.flip:focus-visible { outline: 2px solid var(--tier); outline-offset: 3px; }
+@media (min-width: 960px) { .flip { right: 32px; bottom: 32px; } }
 @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
 
 #debug { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 9; margin: 0; padding: 10px; border-radius: 8px; background: rgba(0,0,0,.85); color: #9f9; font: 11px/1.4 "JB Mono", monospace; white-space: pre-wrap; }

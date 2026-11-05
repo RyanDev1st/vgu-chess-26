@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=12";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=13";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "12", dbg = [];
+const VERSION = "13", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -263,7 +263,7 @@ function step(dt) {
   const all = [...P.map((p, i) => [p, O[i]]), [bottom, bottomOld]];
   for (const [i, [p, o]] of all.entries()) {
     if (i === 0) continue;
-    const v = p.clone().sub(o).multiplyScalar(.993);
+    const v = p.clone().sub(o).multiplyScalar(.99);   // air drag: a swing fades within about two seconds
     v.x = Math.max(-.07, Math.min(.07, v.x)); v.z = Math.max(-.07, Math.min(.07, v.z)); v.y = Math.min(v.y, .035);   // a flick swings it, never throws it over the top; falling is never slowed   // air drag: a swing fades over about two seconds
     o.copy(p); p.add(v).addScaledVector(gravity, dt * dt);
   }
@@ -272,14 +272,23 @@ function step(dt) {
     P[0].copy(anchor);
     for (let i = 0; i < N - 1; i++) {
       const a = P[i], b = P[i + 1], d = b.clone().sub(a), len = d.length();
-      if (len <= SEG) continue;                     // a band only pulls
-      const diff = (len - SEG) / len;
-      if (i === 0) b.addScaledVector(d, -diff); else { a.addScaledVector(d, diff / 2); b.addScaledVector(d, -diff / 2); }
+      const limit = i === N - 2 ? SEG + stretch : SEG;   // the last stretch of band is elastic (see pin)
+      if (len <= limit) continue;                   // a band only pulls
+      const diff = (len - limit) / len;
+      if (i === 0) b.addScaledVector(d, -diff);
+      else if (i === N - 2 && dragging) continue;   // held: this link stretches instead (handled once per step below)
+      else { a.addScaledVector(d, diff / 2); b.addScaledVector(d, -diff / 2); }
     }
     const d = bottom.clone().sub(P[N - 1]), len = d.length(), diff = (len - CH) / len;   // the card is rigid
     if (dragging) { P[N - 1].addScaledVector(d, diff * .5); bottom.addScaledVector(d, -diff * .5); pin(); }
     else { P[N - 1].addScaledVector(d, diff * .3); bottom.addScaledVector(d, -diff * .7); }
   }
+  if (dragging) {   // the band's end eases toward the card a little each step; the rest of the band stays a band
+    const a = P[N - 2], d = P[N - 1].clone().sub(a), len = d.length();
+    if (len > SEG) a.addScaledVector(d, (len - SEG) / len * .25);
+    stretch = Math.max(0, a.distanceTo(P[N - 1]) - SEG);
+  }
+  else stretch = Math.max(0, stretch - 16 * dt);   // let go: the stretched band springs back
   // turning: the band's twist pulls the card back to face you. While held, the card only follows the hand:
   // no spin is added (this was the "spins like mad when held" bug: every drag frame used to add more spin).
   if (!dragging) {
@@ -296,31 +305,27 @@ function step(dt) {
 // the finger and gravity turns the card around it: hold the right edge and the left side drops; hold the middle and
 // it stays level; hold near the clip and it hangs.
 const held = { lx: 0, ly: 0 };
-let rotV = 0;
+let rotV = 0, stretch = 0;
+const MAX_STRETCH = 2.4;   // how far the band gives when pulled (scene units; the band is 4.6 long)
 const frame2D = () => {
   const T = P[N - 1], up = T.clone().sub(bottom).normalize(), right = new THREE.Vector3(up.y, -up.x, 0);
   const C = T.clone().add(bottom).multiplyScalar(.5);
   return { T, up, right, C, G: C.clone().addScaledVector(up, held.ly).addScaledVector(right, held.lx * Math.cos(spin)) };
 };
-function pin() {   // move the card (no turn) so the held spot is under the finger, never further than the band reaches
+function pin() {   // move the card (no turn) so the held spot is under the finger
   const { G } = frame2D(), d = grab.clone().sub(G);
   P[N - 1].add(d); bottom.add(d);
-  // The band holds the clip: if the clip would end up beyond the band's reach, the card turns around the held spot
-  // (it does not slide off the finger). Only when no turn can help (the finger is out of range) does it give way.
-  const reach = (N - 1) * SEG, over = P[N - 1].distanceTo(anchor) - reach;
-  if (over > 0) {
-    const g = frame2D().G, r = P[N - 1].clone().sub(g), toA = anchor.clone().sub(P[N - 1]);
-    const lever = Math.max(.5, r.length());
-    if (g.distanceTo(anchor) < reach + lever * .98) {
-      const a = Math.sign(r.x * toA.y - r.y * toA.x) * Math.min(.3, over / lever), c = Math.cos(a), sn = Math.sin(a);
-      for (const p of [P[N - 1], bottom]) { const x = p.x - g.x, y = p.y - g.y; p.x = g.x + x * c - y * sn; p.y = g.y + x * sn + y * c; }
-      rotV *= .6;
-    } else { const back = toA.setLength(over); P[N - 1].add(back); bottom.add(back); }
-  }
+  // beyond what the band can give, the card stays back and the finger slides off the spot
+  const end = P[N - 2], over = end.distanceTo(P[N - 1]) - SEG - MAX_STRETCH;
+  if (over > 0) { const back = end.clone().sub(P[N - 1]).setLength(over); P[N - 1].add(back); bottom.add(back); }
 }
 function holdTurn(dt) {   // gravity's turn around the held spot
   const { C, G } = frame2D(), v = C.clone().sub(G);
   rotV += -v.x * 9 * dt;                 // centre left of the finger: turns anticlockwise, so it swings down
+  // the stretched band pulls the clip: that turns the card only when the pull is at an angle to the held spot
+  // (pulling straight down from the middle turns nothing; this was the "always lifts to the left" bug)
+  const T = P[N - 1], pull = P[N - 2].clone().sub(T).setLength(stretch), r = T.clone().sub(G);
+  rotV += (r.x * pull.y - r.y * pull.x) * 16 * dt;
   rotV *= Math.exp(-5 * dt);
   const a = rotV * dt, c = Math.cos(a), sn = Math.sin(a);
   for (const p of [P[N - 1], bottom]) { const x = p.x - G.x, y = p.y - G.y; p.x = G.x + x * c - y * sn; p.y = G.y + x * sn + y * c; }
@@ -371,8 +376,13 @@ stage.addEventListener("pointermove", e => { if (dragging) grab.copy(toWorld(e))
 const release = e => {
   if (!dragging) return;
   dragging = false; stage.classList.remove("drag");
-  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 350) spinTarget += Math.PI;   // tap: turn over
+  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 350) { spinTarget += Math.PI; flipLabel(); }   // tap: turn over
 };
+// the turn-over button: the same half turn as a tap on the card, and it says which side you will see
+const flipBtn = $("#flip");
+const flipLabel = () => { flipBtn.querySelector("span").textContent = Math.cos(spinTarget) > 0 ? "See the back" : "See the front"; };
+flipBtn.addEventListener("pointerdown", e => e.stopPropagation());
+flipBtn.onclick = () => { spinTarget += Math.PI; flipLabel(); };
 stage.addEventListener("pointerup", release); stage.addEventListener("pointercancel", release);
 
 // ---------- fit + loop ----------
