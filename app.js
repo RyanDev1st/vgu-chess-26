@@ -3,16 +3,22 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=15";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=16";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "15", dbg = [];
+const VERSION = "16", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
   addEventListener("error", e => note("error: " + e.message)); addEventListener("unhandledrejection", e => note("error: " + (e.reason?.message || e.reason)));
   note("version " + VERSION + " | " + navigator.userAgent.replace(/^Mozilla\/5\.0 /, "").slice(0, 90));
 }
+// GitHub Pages lets a browser keep the page for 10 minutes, so a visitor can get an old version right after an update.
+// Ask for the current page past the cache; if it names a newer version, load that (once: the ?v= stops a loop).
+fetch("index.html?t=" + Date.now(), { cache: "no-store" }).then(r => r.text()).then(t => {
+  const v = t.match(/app\.js\?v=(\d+)/)?.[1], u = new URL(location.href);
+  if (v && v !== VERSION && u.searchParams.get("v") !== v) { u.searchParams.set("v", v); location.replace(u); }
+}).catch(() => {});
 
 const q = new URLSearchParams(location.search);
 const id = ["1", "2", "3", "4"].includes(q.get("c")) ? q.get("c") : "1";
