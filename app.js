@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=14";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=15";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "14", dbg = [];
+const VERSION = "15", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -517,7 +517,25 @@ function draw2D(now) {
   P.forEach((p, i) => { const q = proj(p); i ? ctx2.lineTo(q.x, q.y) : ctx2.moveTo(q.x, q.y); });
   const clipTop = proj(world(0, CH / 2 + .12)); ctx2.lineTo(clipTop.x, clipTop.y);
   ctx2.strokeStyle = "#17161a"; ctx2.lineWidth = px; ctx2.stroke();
-  ctx2.strokeStyle = "rgba(244,242,238,.07)"; ctx2.lineWidth = Math.max(1, px * .08); ctx2.stroke();   // a faint woven sheen
+  // the band's print (VGU Chess 26, SPORT WEEK): each stretch of band gets its slice of the band image, laid along it
+  // the same way the 3D band maps it (one image per BW * 8 of band, read from the top down)
+  const upC = P[N - 1].clone().sub(bottom).normalize(), pts = [...P.slice(0, N - 1), P[N - 1].clone().addScaledVector(upC, .12)];
+  const UNIT = BW * 8, IW = bandCv.width, IH = bandCv.height;
+  let run = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1], len = i < N - 2 ? P[i].distanceTo(P[i + 1]) : a.distanceTo(b);
+    const dir = b.clone().sub(a).normalize(), side = new THREE.Vector3(dir.y, -dir.x, 0).multiplyScalar(BW / 2);
+    const A = proj(a.clone().sub(side)), B = proj(b.clone().sub(side)), Ab = proj(a.clone().add(side));
+    let u0 = run / UNIT * IW, u1 = (run + len) / UNIT * IW; run += len;
+    if (u1 - u0 < .5) continue;
+    const ux = (B.x - A.x) / (u1 - u0), uy = (B.y - A.y) / (u1 - u0), vx = (Ab.x - A.x) / IH, vy = (Ab.y - A.y) / IH;
+    ctx2.save(); ctx2.setTransform(ux, uy, vx, vy, A.x - ux * u0, A.y - uy * u0);
+    for (let s = u0; s < u1;) {   // the image repeats down a long (stretched) band
+      const k = Math.floor(s / IW), e = Math.min(u1, (k + 1) * IW), sx = s - k * IW, w = Math.min(e - s + .8, IW - sx);   // .8: no hairline seams
+      ctx2.drawImage(bandCv, sx, 0, w, IH, s, 0, w, IH); s = e;
+    }
+    ctx2.restore();
+  }
 
   // which side faces us: the back is the front turned half a turn, so its image runs the other way
   let tl = proj(world(-CW / 2, CH / 2)), tr = proj(world(CW / 2, CH / 2)), bl = proj(world(-CW / 2, -CH / 2));
