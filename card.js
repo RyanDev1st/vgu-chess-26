@@ -159,10 +159,15 @@ export function drawFront(canvas, card, photo, pxPerMm) {
   const name = (card.name || "").trim();
   text(ctx, s, name, X - .3, 31.6, { size: fit(ctx, s, name, 600, SERIF, 7.4, 41.4), weight: 600, family: SERIF });
 
-  field(ctx, s, "MAJOR", card.majorShort || card.major, X, 37.6);
-  field(ctx, s, "INTAKE", card.intake, X + 24, 37.6);
-  field(ctx, s, "SCORE", card.points != null ? `${half(card.points)} / 5` : "", X, 44.9);
-  field(ctx, s, "RECORD", record(card.rounds), X + 24, 44.9);
+  // score and record only once there are real results; until then the identity row sits a little lower, alone
+  const results = card.points != null || card.rounds?.length;
+  const fy = results ? 37.6 : 40.4;
+  field(ctx, s, "MAJOR", card.majorShort || card.major, X, fy);
+  field(ctx, s, "INTAKE", card.intake, X + 24, fy);
+  if (results) {
+    field(ctx, s, "SCORE", card.points != null ? `${half(card.points)} / 5` : "", X, 44.9);
+    field(ctx, s, "RECORD", record(card.rounds), X + 24, 44.9);
+  }
 
   text(ctx, s, "SPORT WEEK 2026", X, 53, { size: 1.3, weight: 600, color: FAINT, spacing: .3 });
   text(ctx, s, "Nº 1/1", 84, 53, { size: 2.8, weight: 500, family: SERIF, italic: true, align: "right" });

@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=7";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=8";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "7", dbg = [];
+const VERSION = "8", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
