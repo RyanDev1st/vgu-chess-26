@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=10";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=11";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "10", dbg = [];
+const VERSION = "11", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -149,10 +149,10 @@ const FOIL = { grain: [260, 168], wash: .9, silver: .1, glow: .45, sparkle: 1.6,
 // The photo stays plain print (foil on skin reads as a rash): no foil inside the portrait window, in card mm incl. bleed.
 const PHOTO = [9.4, 38.2, 52.4];   // x from, x to, y down to
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
-const holo = map => {
+const holo = (map, hasPhoto) => {   // hasPhoto: the front only; the back is all foil
   const m = new THREE.MeshPhysicalMaterial({
     map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: .42,
-    roughness: .5, metalness: .1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: .12, sheen: .6, sheenColor: 0x5fe0c8, sheenRoughness: .4,
+    roughness: .5, metalness: .1, clearcoat: .25, clearcoatRoughness: .35, envMapIntensity: .12, sheen: .3, sheenColor: 0x5fe0c8, sheenRoughness: .5,
   });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, holoU);
@@ -165,7 +165,7 @@ const holo = map => {
         float hi = max(base.r, max(base.g, base.b)), lo = min(base.r, min(base.g, base.b));
         float sat = (hi - lo) / (hi + .02);
         float xm = vMapUv.x * ${f(W)}, ym = (1. - vMapUv.y) * ${f(H)};
-        float inPhoto = step(${f(PHOTO[0])}, xm) * step(xm, ${f(PHOTO[1])}) * step(ym, ${f(PHOTO[2])});
+        float inPhoto = ${hasPhoto ? 1 : 0}. * step(${f(PHOTO[0])}, xm) * step(xm, ${f(PHOTO[1])}) * step(ym, ${f(PHOTO[2])});
         float foil = smoothstep(.04, .35, lum) * (1. - .35 * smoothstep(.3, .9, sat)) * (1. - inPhoto);   // light print = foil; not the photo
         vec2 a = normal.xy * 1.6 + uTilt;                                          // the card's angle to the viewer
         float ph = dot(vMapUv, vec2(1.1, .6)) + a.x * 1.3 + a.y * .9 + uTime * .03;
@@ -195,7 +195,7 @@ function cardFace(map, back) {
   const g = new THREE.ShapeGeometry(sh, 12), p = g.attributes.position, uv = g.attributes.uv;
   for (let i = 0; i < p.count; i++)     // trim area of the bleed texture
     uv.setXY(i, (p.getX(i) / CW + .5) * ((W - 4) / W) + 2 / W, (p.getY(i) / CH + .5) * ((H - 4) / H) + 2 / H);
-  const m = new THREE.Mesh(g, holo(map));
+  const m = new THREE.Mesh(g, holo(map, !back));
   if (back) { m.rotation.y = Math.PI; m.position.z = -.006; } else m.position.z = .006;
   return m;
 }
@@ -420,7 +420,7 @@ const trimOf = cv => {
 // The foil in 2D, same model as the shader: foil = light, pale print; three glitter masks (the grain twinkling at three
 // moments) are cross-faded by angle, and multiplied by the sliding colour wash.
 const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
-const foilMasks = img => {
+const foilMasks = (img, hasPhoto) => {
   const w = img.width, h = img.height, src = document.createElement("canvas"); src.width = w; src.height = h;
   const sg = src.getContext("2d", { willReadFrequently: true }); sg.drawImage(img, 0, 0);
   const px = sg.getImageData(0, 0, w, h).data, gx = FOIL.grain[0] / w, gy = FOIL.grain[1] / h;
@@ -432,7 +432,7 @@ const foilMasks = img => {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = (y * w + x) * 4, r = (px[i] / 255) ** 2.2, g = (px[i + 1] / 255) ** 2.2, b = (px[i + 2] / 255) ** 2.2;
     const lum = r * .299 + g * .587 + b * .114, hi = Math.max(r, g, b), lo = Math.min(r, g, b);
-    const xm = x / w * (W - 4) + 2, ym = y / h * (H - 4) + 2, inPhoto = xm > PHOTO[0] && xm < PHOTO[1] && ym < PHOTO[2];
+    const xm = x / w * (W - 4) + 2, ym = y / h * (H - 4) + 2, inPhoto = hasPhoto && xm > PHOTO[0] && xm < PHOTO[1] && ym < PHOTO[2];
     const foil = inPhoto ? 0 : smooth(.04, .35, lum) * (1 - .35 * smooth(.3, .9, (hi - lo) / (hi + .02)));
     const cx = Math.floor(x * gx), cy = Math.floor(y * gy), r2 = hash(cx, cy, [39.3468, 11.135, 24634.6345]);
     sd.data[i] = 115; sd.data[i + 1] = 217; sd.data[i + 2] = 230; sd.data[i + 3] = foil * 255;   // cyan-silver
@@ -446,7 +446,7 @@ const foilMasks = img => {
   silver.getContext("2d").putImageData(sd, 0, 0);
   return { masks, silver };
 };
-const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map(img => ({ img, ...foilMasks(img) }));
+const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map((img, i) => ({ img, ...foilMasks(img, i === 0) }));
 const foilCv = ctx2 && Object.assign(document.createElement("canvas"), { width: faces2[0].img.width, height: faces2[0].img.height });
 const TINT = [.18, .95, .82];   // blue-green, as the shader
 const washColour = ph => [0, .33, .67].map((k, i) => Math.round(255 * ((.5 + .5 * Math.cos(2 * Math.PI * (ph + k))) * .58 + TINT[i] * .42)));
