@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=17";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=18";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "17", dbg = [];
+const VERSION = "18", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -152,6 +152,12 @@ const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.
 // glitter: each grain catches the light at its own angle, so grains twinkle as the card moves, and broad washes of
 // yellow / green / cyan / pink slide across the light areas with the angle. Shared numbers with the 2D path below.
 const FOIL = { grain: [260, 168], wash: .9, silver: .1, glow: .45, sparkle: 1.6, darkGlint: .22 };   // darkGlint: the film's glints on dark print
+// Foil is a mirror: it lights up only around the spot where it reflects the light, and the rest reads as plain print.
+// Seen straight on that spot sits near the top-left (a ceiling light behind you); turning or tipping the card slides it
+// across. at: the spot face-on (card uv, y up); move: how far it slides per unit of angle; r: its size; floor: the foil
+// left away from it.
+const GLARE = { at: [.3, .74], move: .8, r: .12, floor: .1 };
+const glareAt = (ax, ay) => [GLARE.at[0] - ax * GLARE.move, GLARE.at[1] - ay * GLARE.move];
 // The photo stays plain print (foil on skin reads as a rash): no foil where card.js says the photo is (the window and
 // the head rising above it, exactly; a rectangle here used to leave a dead block above the head).
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
@@ -183,17 +189,20 @@ const holo = (map, photoMask) => {   // photoMask: the front only; the back is a
         vec2 a = normal.xy * 1.6 + uTilt;                                          // the card's angle to the viewer
         float ph = dot(vMapUv, vec2(1.1, .6)) + a.x * 1.3 + a.y * .9 + uTime * .03;
         float catchL = smoothstep(.15, .85, .5 + .5 * sin(6.2831 * ph * ${f(FOIL.wash)}));   // broad lit / unlit washes
+        vec2 hot = vec2(${f(GLARE.at[0])}, ${f(GLARE.at[1])}) - a * ${f(GLARE.move)};
+        vec2 dh = (vMapUv - hot) * vec2(${f(W / H)}, 1.);                         // round on the card, not stretched
+        float lit = ${f(GLARE.floor)} + ${f(1 - GLARE.floor)} * exp(-dot(dh, dh) / ${f(GLARE.r)});   // near the reflection: full foil
         vec2 cell = floor(vMapUv * vec2(${f(FOIL.grain[0])}, ${f(FOIL.grain[1])}));
         float r1 = holoHash(cell), r2 = holoHash(cell + vec2(57.31, 113.7));
         float tw = pow(.5 + .5 * cos(6.2831 * (r2 + a.x * 1.9 + a.y * 1.4 + uTime * .02)), 24.) * step(.62, r1);   // only some flakes face the light   // a grain flashing as it turns
         vec3 spectrum = .5 + .5 * cos(6.2831 * (ph + r1 * .25 + vec3(0., .33, .67)));
         spectrum = mix(spectrum, vec3(.18, .95, .82), .42);   // the foil reads blue-green when it catches light (as in the shop video)
         vec3 hue = spectrum - vec3(dot(spectrum, vec3(.3333)));   // colour without extra brightness: light print turns blue-green instead of white
-        float k = foil * (.3 + .7 * catchL);
+        float k = foil * (.3 + .7 * catchL) * lit;
         totalEmissiveRadiance *= mix(vec3(1.), vec3(.55, .95, 1.) * (.75 + .5 * spectrum), k * .8);   // the print itself shifts toward blue-green
         totalEmissiveRadiance += k * hue * .9;
         float film = max(foil, ${f(FOIL.darkGlint)} * (1. - inPhoto));   // the glitter film covers all the print except the photo
-        totalEmissiveRadiance += foil * (vec3(.45, .85, .9) * ${f(FOIL.silver)} + spectrum * catchL * ${f(FOIL.glow)}) + film * spectrum * (.35 + .65 * catchL) * ${f(FOIL.sparkle)} * tw;
+        totalEmissiveRadiance += lit * (foil * (vec3(.45, .85, .9) * ${f(FOIL.silver)} + spectrum * catchL * ${f(FOIL.glow)}) + film * spectrum * (.35 + .65 * catchL) * ${f(FOIL.sparkle)} * tw);
       }`);
   };
   return m;
@@ -574,16 +583,22 @@ function draw2D(now) {
     grad.addColorStop(o, `rgb(${Math.round(r * catchL)},${Math.round(gg * catchL)},${Math.round(b * catchL)})`);
   }
   const phase = ((ax * 1.9 + ay * 1.4 + time * .02) % 1 + 1) % 1 * 3, k1 = Math.floor(phase) % 3, k2 = (k1 + 1) % 3, mix = phase - Math.floor(phase);
+  // the glare spot, as in the shader (a round falloff on the card)
+  const [hu, hv] = glareAt(ax, ay), sig = Math.sqrt(GLARE.r) * ih;
+  const glare = g.createRadialGradient(hu * iw, (1 - hv) * ih, 0, hu * iw, (1 - hv) * ih, sig * 2.2);
+  for (let s = 0; s <= 8; s++) { const d = s / 8 * 2.2; glare.addColorStop(s / 8, `rgba(0,0,0,${(GLARE.floor + (1 - GLARE.floor) * Math.exp(-d * d)).toFixed(3)})`); }
+  const spot = () => { g.globalCompositeOperation = "destination-in"; g.fillStyle = glare; g.fillRect(0, 0, iw, ih); };
   ctx2.globalCompositeOperation = "lighter";
   for (const [k, wgt] of [[k1, 1 - mix], [k2, mix]]) {
     g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, iw, ih); g.fillStyle = grad; g.fillRect(0, 0, iw, ih);
-    g.globalCompositeOperation = "destination-in"; g.drawImage(face.masks[k], 0, 0);
+    g.globalCompositeOperation = "destination-in"; g.drawImage(face.masks[k], 0, 0); spot();
     ctx2.globalAlpha = wgt; ctx2.drawImage(foilCv, 0, 0);
   }
-  ctx2.globalAlpha = .1; ctx2.drawImage(face.silver, 0, 0);   // the silver of the foil itself
+  g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, iw, ih); g.drawImage(face.silver, 0, 0); spot();
+  ctx2.globalAlpha = .1; ctx2.drawImage(foilCv, 0, 0);   // the silver of the foil itself
   // light print takes the foil's blue-green hue where the light catches it (colour, not brightness)
   g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, iw, ih); g.fillStyle = grad; g.fillRect(0, 0, iw, ih);
-  g.globalCompositeOperation = "destination-in"; g.drawImage(face.silver, 0, 0);
+  g.globalCompositeOperation = "destination-in"; g.drawImage(face.silver, 0, 0); spot();
   ctx2.globalCompositeOperation = "color"; ctx2.globalAlpha = .55; ctx2.drawImage(foilCv, 0, 0);
   ctx2.restore();
   ctx2.globalCompositeOperation = "source-over"; ctx2.globalAlpha = 1;
