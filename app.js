@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 // three.js is big: start fetching it now, but show the page text without waiting for it (see "the card in 3D")
 const threeP = Promise.all([import("three"), import("three/addons/environments/RoomEnvironment.js")]);
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=20";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=21";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "20", dbg = [];
+const VERSION = "21", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -159,7 +159,10 @@ const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.
 // card turns, swings or tilts, and drift slowly so a still card still shifts. Light print shows it most, dark print a
 // little. No glitter dots. The photo takes only the faint film, never the bright part (a rainbow face looks wrong).
 // Shared numbers with the 2D drawing below.
-const FILM = { dark: .07, light: .5, lumFrom: .12, lumTo: .75, drift: .035, photo: .07 };
+const FILM = { dark: .06, light: .42, lumFrom: .12, lumTo: .75, drift: .035, photo: .06 };
+// A few fine glints, as in the first mock: the film is made of tiny grains (520 across the card); at any angle about
+// 1.5% of them catch the light, and a different few as the card moves. Not on the photo.
+const SPARK = { cells: [520, 340], share: .01, strength: .3, strength2d: .6 };   // 2D dots are flat squares: a little stronger to read the same
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
 const holo = (map, photoMask) => {   // photoMask: the front only
   const m = new THREE.MeshPhysicalMaterial({
@@ -172,7 +175,9 @@ const holo = (map, photoMask) => {   // photoMask: the front only
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, holoU, photoMask ? { uPhotoMask: { value: photoMask } } : {});
     const f = n => n.toFixed(3);
-    sh.fragmentShader = `uniform vec2 uTilt; uniform float uTime;${photoMask ? " uniform sampler2D uPhotoMask;" : ""}\n` + sh.fragmentShader.replace("#include <emissivemap_fragment>", `
+    sh.fragmentShader = `uniform vec2 uTilt; uniform float uTime;${photoMask ? " uniform sampler2D uPhotoMask;" : ""}
+      float holoHash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+` + sh.fragmentShader.replace("#include <emissivemap_fragment>", `
       #include <emissivemap_fragment>
       {
         vec3 base = texture2D(map, vMapUv).rgb;
@@ -183,7 +188,9 @@ const holo = (map, photoMask) => {   // photoMask: the front only
         vec3 rainbow = .5 + .5 * cos(6.2831 * (h + vec3(0., .33, .67)));
         float band = .55 + .45 * sin(6.2831 * (vMapUv.x * .8 + vMapUv.y * .5 + a.x * .7 - a.y * .4));   // light catching in a moving band
         float amt = mix(${f(FILM.dark)} + ${f(FILM.light)} * smoothstep(${f(FILM.lumFrom)}, ${f(FILM.lumTo)}, lum), ${f(FILM.photo)}, inPhoto) * band;
-        totalEmissiveRadiance += rainbow * amt;
+        float rnd = holoHash(floor(vMapUv * vec2(${f(SPARK.cells[0])}, ${f(SPARK.cells[1])})));   // (no sin() hash: it fails on some GPUs)
+        float spark = step(${f(1 - SPARK.share)}, fract(rnd + a.x * 2.3 + a.y * 1.7)) * (1. - inPhoto);   // a grain catching the light
+        totalEmissiveRadiance += rainbow * (amt + spark * ${f(SPARK.strength)});
       }`);
   };
   return m;
@@ -502,6 +509,15 @@ const filmMask = (img, photoMask) => {   // alpha = the film's strength at each 
     out.data[i] = out.data[i + 1] = out.data[i + 2] = 255; out.data[i + 3] = amt / top * 255;
   }
   const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").putImageData(out, 0, 0);
+  const [gx, gy] = SPARK.cells, grains = [];
+  for (let cy = 0; cy < gy; cy++) for (let cx = 0; cx < gx; cx++) {
+    const x = (cx + .5) / gx * w, y = (1 - (cy + .5) / gy) * h;
+    if (pm && pm[(Math.floor(y) * w + Math.floor(x)) * 4 + 3] > 90) continue;
+    const v = Math.sin(cx * 12.9898 + cy * 78.233) * 43758.5453;
+    grains.push([v - Math.floor(v), cx / gx * w, (1 - (cy + 1) / gy) * h]);
+  }
+  grains.sort((p, q) => p[0] - q[0]);
+  c.grains = grains;
   return c;
 };
 const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map((img, i) => ({ img, film: filmMask(img, i === 0 ? trimOf(frontCv.photoMask) : null) }));
@@ -574,6 +590,15 @@ function draw2D(now) {
   g.drawImage(face.film, 0, 0);   // how much film each spot takes
   ctx2.globalCompositeOperation = "lighter"; ctx2.globalAlpha = FILM.dark + FILM.light;
   ctx2.drawImage(foilCv, 0, 0);
+  // the few grains catching the light: fract(rnd + phase) > 1 - share, i.e. rnd in one slice of the sorted list
+  const gr = face.film.grains, lo = ((1 - SPARK.share - (ax * 2.3 + ay * 1.7)) % 1 + 1) % 1, gw = iw / SPARK.cells[0], gh = ih / SPARK.cells[1];
+  const from = i => { let a = 0, b = gr.length; while (a < b) { const m = (a + b) >> 1; gr[m][0] < i ? a = m + 1 : b = m; } return a; };
+  const dots = new Path2D(), add = (a, b) => { for (let i = a; i < b; i++) dots.rect(gr[i][1], gr[i][2], gw, gh); };
+  const hi = lo + SPARK.share;
+  if (hi <= 1) add(from(lo), from(hi)); else { add(from(lo), gr.length); add(0, from(hi - 1)); }
+  ctx2.globalAlpha = SPARK.strength2d;
+  ctx2.fillStyle = lineGrad(ctx2, iw, ih, 1.1 / iw, .6 / ih, k => `rgb(${[0, .33, .67].map(o => Math.round(255 * (.5 + .5 * Math.cos(2 * Math.PI * (hue0 + k + o))))).join(",")})`);
+  ctx2.fill(dots);
   ctx2.restore();
   ctx2.globalCompositeOperation = "source-over"; ctx2.globalAlpha = 1;
 
