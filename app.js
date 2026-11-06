@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 // three.js is big: start fetching it now, but show the page text without waiting for it (see "the card in 3D")
 const threeP = Promise.all([import("three"), import("three/addons/environments/RoomEnvironment.js")]);
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=28";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=29";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "28", dbg = [];
+const VERSION = "29", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -162,7 +162,7 @@ const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.
 const FILM = { dark: .06, light: .42, lumFrom: .12, lumTo: .75, drift: .035, photo: .06 };
 // A few fine glints, as in the first mock: the film is made of tiny grains (520 across the card); at any angle about
 // 1.5% of them catch the light, and a different few as the card moves. Not on the photo.
-const SPARK = { cells: [520, 340], share: .004, strength: .3, strength2d: .6 };   // 2D dots are flat squares: a little stronger to read the same
+const SPARK = { cells: [520, 340], share: .0015, strength: .3, strength2d: .6 };   // 2D dots are flat squares: a little stronger to read the same
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
 const holo = (map, photoMask) => {   // photoMask: the front only
   const m = new THREE.MeshPhysicalMaterial({
