@@ -129,3 +129,12 @@ footer { margin-top: 44px; font-size: 12.5px; line-height: 1.7; color: var(--fai
 @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
 
 #debug { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 9; margin: 0; padding: 10px; border-radius: 8px; background: rgba(0,0,0,.85); color: #9f9; font: 11px/1.4 "JB Mono", monospace; white-space: pre-wrap; }
+
+/* opening: the text fades up as soon as it is filled in (no waiting on the 3D card); the four cards hold their place
+   with a dark card shape until their pictures are drawn */
+main { transition: opacity .45s ease, transform .45s ease; }
+body:not(.ready) main { opacity: 0; transform: translateY(10px); }
+.four img:not([src]) { background: #17161a; }
+@media (prefers-reduced-motion: reduce) { main { transition: none; } }
+.turn { transition: opacity .4s ease; }
+.stage:not(.live) .turn { opacity: 0; pointer-events: none; }

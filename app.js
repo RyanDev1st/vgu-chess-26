@@ -1,12 +1,12 @@
 // Winner page. The chip in each card opens ?c=1 .. ?c=4 (add &demo for sample data).
 // What it is for: challenge the winner online, prove the title (verified record + Add to LinkedIn), keep the card (save image),
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
-import * as THREE from "three";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=19";
+// three.js is big: start fetching it now, but show the page text without waiting for it (see "the card in 3D")
+const threeP = Promise.all([import("three"), import("three/addons/environments/RoomEnvironment.js")]);
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=20";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "19", dbg = [];
+const VERSION = "20", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -29,12 +29,12 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 const half = p => String(p).replace(/\.5$/, "½");
 
 // ---------- data ----------
-await fontsReady();
+const fontsP = fontsReady();
 const data = await fetch(demo ? "winners.demo.json" : "winners.json", { cache: "no-store" }).then(r => r.json()).catch(() => ({ cards: {} }));
 const card = { rank: Number(id), ...(data.cards?.[id] || {}) };
 const t = TIERS[card.rank];
-const photo = card.photo ? await loadImage(card.photo).catch(() => null) : null;
-note("photo: " + (photo ? photo.width + "x" + photo.height : "NOT LOADED"));
+const photoP = card.photo ? loadImage(card.photo).catch(() => null) : Promise.resolve(null);
+let photo = null;
 const given = (card.name || "").trim().split(/\s+/).pop() || "the winner";
 
 document.documentElement.style.setProperty("--tier", t.line);
@@ -91,13 +91,19 @@ const thumb = async (n, c) => {
   out.getContext("2d").drawImage(src, 2 * k, 2 * k, out.width, out.height, 0, 0, out.width, out.height);
   return out.toDataURL("image/jpeg", .86);
 };
-const four = await Promise.all(["1", "2", "3", "4"].map(async n => {
+$("#podium").innerHTML = ["1", "2", "3", "4"].map(n => {
   const c = data.cards?.[n] || {};
   return `<a href="?c=${n}${demo}" ${n === id ? 'aria-current="page"' : ""}>
-    <img src="${await thumb(n, c)}" alt="${esc(c.name || TIERS[n].label)}'s card" loading="lazy">
+    <img data-n="${n}" alt="${esc(c.name || TIERS[n].label)}'s card" width="${(W - 4) * 7}" height="${(H - 4) * 7}">
     <span class="pn">${esc(c.name || "To be decided")}</span><span class="pl">${title(TIERS[n].label)}</span></a>`;
-}));
-$("#podium").innerHTML = four.join("");
+}).join("");
+// drawn after the main card has started falling (each one is a full card render), one per frame
+const drawFour = async () => {
+  for (const img of document.querySelectorAll("#podium img[data-n]")) {
+    img.src = await thumb(img.dataset.n, data.cards?.[img.dataset.n] || {});
+    await new Promise(r => requestAnimationFrame(r));
+  }
+};
 // This year's four scrolls sideways with a finger, a mouse wheel, a mouse drag, or the arrow buttons.
 {
   const nav = $("#podium"), card = () => nav.querySelector("a").getBoundingClientRect().width + 12;
@@ -122,10 +128,11 @@ $("#podium").innerHTML = four.join("");
 }
 { const nav = $("#podium"), cur = nav.querySelector("[aria-current]"); if (cur) nav.scrollLeft = cur.getBoundingClientRect().left - nav.getBoundingClientRect().left - 22; }
 
+document.body.classList.add("ready");   // the page text is in: fade it up
+await new Promise(r => requestAnimationFrame(() => setTimeout(r)));   // let it paint before the heavy 3D setup
+
 // ---------- the card in 3D ----------
-const frontCv = drawFront(document.createElement("canvas"), card, photo, 16);
-const backCv = drawBack(document.createElement("canvas"), card, photo, 16);
-{ const d = frontCv.getContext("2d", { willReadFrequently: true }).getImageData(Math.round(23.8 * 16), Math.round(30 * 16), 1, 1).data; note("photo on card (face pixel): rgb " + d[0] + "," + d[1] + "," + d[2]); }
+const [THREE, { RoomEnvironment }] = await threeP;
 const canvas = $("#gl");
 // 3D when the browser allows it; otherwise the same physics drawn in 2D (some browsers, e.g. Helium, block WebGL).
 let renderer = null;
@@ -195,6 +202,12 @@ function cardFace(map, back) {
   return m;
 }
 const cardObj = new THREE.Group();
+// the card's faces need the fonts and the photo; WebGL and the lighting above were set up while those downloaded
+await fontsP; photo = await photoP;
+note("photo: " + (photo ? photo.width + "x" + photo.height : "NOT LOADED"));
+const frontCv = drawFront(document.createElement("canvas"), card, photo, 16);
+const backCv = drawBack(document.createElement("canvas"), card, photo, 16);
+{ const d = frontCv.getContext("2d", { willReadFrequently: true }).getImageData(Math.round(23.8 * 16), Math.round(30 * 16), 1, 1).data; note("photo on card (face pixel): rgb " + d[0] + "," + d[1] + "," + d[2]); }
 const photoMaskTex = new THREE.CanvasTexture(frontCv.photoMask);
 cardObj.add(cardFace(tex(frontCv), false), cardFace(tex(backCv), true));
 const clip = new THREE.Mesh(new THREE.BoxGeometry(.9, .32, .14), new THREE.MeshStandardMaterial({ color: 0x9a9da3, metalness: 1, roughness: .3 }));
@@ -444,14 +457,21 @@ new ResizeObserver(resize).observe(canvas); resize();
 let last = performance.now(), acc = 0;
 const STEP = 1 / 120;   // fixed step: the swing feels the same on any phone
 const frame = now => {
-  acc = Math.min(acc + (now - last) / 1000, .25); last = now;
+  // at most 4 physics steps per frame: catching up a slow frame with 30 steps made the next frame slow too, and a
+  // slow phone never recovered (5 frames a second). Behind that, the card just moves in slight slow motion.
+  acc = Math.min(acc + (now - last) / 1000, 4 * STEP); last = now;
   while (acc >= STEP) { step(STEP); acc -= STEP; }
   place();
   holoU.uTilt.value.lerp(tilt, .08); holoU.uTime.value = now / 1000;
   if (renderer) renderer.render(scene, camera); else draw2D(now);
   requestAnimationFrame(frame);
 };
+if (renderer) renderer.compile(scene, camera);   // build the shaders now, so the first frames of the drop do not stutter
+last = performance.now();
 requestAnimationFrame(frame);
+setTimeout(() => $(".stage").classList.add("live"), reduce ? 0 : 1100);   // the turn controls appear as the card lands
+// the four card pictures: once the card has landed (each is a full card drawing; done during the drop they made it jerk)
+setTimeout(() => (window.requestIdleCallback || setTimeout)(drawFour), reduce ? 0 : 1800);
 
 
 // ---------- 2D drawing (no WebGL) ----------
