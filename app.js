@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 // three.js is big: start fetching it now, but show the page text without waiting for it (see "the card in 3D")
 const threeP = Promise.all([import("three"), import("three/addons/environments/RoomEnvironment.js")]);
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=27";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=28";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "27", dbg = [];
+const VERSION = "28", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -160,16 +160,9 @@ const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.
 // little. No glitter dots. The photo takes only the faint film, never the bright part (a rainbow face looks wrong).
 // Shared numbers with the 2D drawing below.
 const FILM = { dark: .06, light: .42, lumFrom: .12, lumTo: .75, drift: .035, photo: .06 };
-// Silver shimmer: small pebble-shaped flecks of silver foil scattered at random in the film (about .5 to 1 mm, each its
-// own rounded shape, size and turn; no grid). At rest they are almost invisible; where the film's moving band of light
-// passes over them, and their own tilt meets the light, they flash softly, silver with a faint rainbow tint.
-// Not on the photo. cells: one possible fleck per cell, placed and shaped at random; present: the share of cells
-// that hold one; rest: how faintly they show away from the light.
-const PEBBLE = { cells: [96, 61], present: .35, rest: .03, crest: 8, own: 3, tint: .2, strength: .85, strength2d: .85 };
-const pebbleLight = (cu, cv, q4, ax, ay) =>   // the band of light (as the film's) times the fleck's own tilt
-  PEBBLE.rest + Math.pow(.5 + .5 * Math.sin(2 * Math.PI * (cu * .8 + cv * .5 + ax * .7 - ay * .4)), PEBBLE.crest)
-    * Math.pow(.5 + .5 * Math.cos(2 * Math.PI * (q4 + ax * 1.6 + ay * 1.1)), PEBBLE.own);
-const pebbleRand = (cx, cy, k) => { const v = Math.sin(cx * 12.9898 + cy * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
+// A few fine glints, as in the first mock: the film is made of tiny grains (520 across the card); at any angle about
+// 1.5% of them catch the light, and a different few as the card moves. Not on the photo.
+const SPARK = { cells: [520, 340], share: .004, strength: .3, strength2d: .6 };   // 2D dots are flat squares: a little stronger to read the same
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
 const holo = (map, photoMask) => {   // photoMask: the front only
   const m = new THREE.MeshPhysicalMaterial({
@@ -195,21 +188,9 @@ const holo = (map, photoMask) => {   // photoMask: the front only
         vec3 rainbow = .5 + .5 * cos(6.2831 * (h + vec3(0., .33, .67)));
         float band = .55 + .45 * sin(6.2831 * (vMapUv.x * .8 + vMapUv.y * .5 + a.x * .7 - a.y * .4));   // light catching in a moving band
         float amt = mix(${f(FILM.dark)} + ${f(FILM.light)} * smoothstep(${f(FILM.lumFrom)}, ${f(FILM.lumTo)}, lum), ${f(FILM.photo)}, inPhoto) * band;
-        totalEmissiveRadiance += rainbow * amt;
-        // the pebble flakes: this spot's cell, the flake's random place, size and turn in it, and its irregular outline
-        vec2 gp = vMapUv * vec2(${f(PEBBLE.cells[0])}, ${f(PEBBLE.cells[1])}), cell = floor(gp);
-        float q1 = holoHash(cell), q2 = holoHash(cell + 17.3), q3 = holoHash(cell + 41.9), q4 = holoHash(cell + 73.1);
-        vec2 d = (gp - cell - (.5 + (vec2(q1, q2) - .5) * .3)) * vec2(${f(PEBBLE.cells[1] / PEBBLE.cells[0] * W / H)}, 1.);   // round on the card
-        float rot = 6.2831 * q2, cr = cos(rot), sr = sin(rot);
-        d = vec2(cr * d.x + sr * d.y, -sr * d.x + cr * d.y) / vec2(1. + .55 * q1, 1.);   // a pebble: an oval, stretched and turned at random
-        float ang = atan(d.y, d.x), rad = (.19 + .13 * q3) * (1. + .07 * sin(3. * ang + 6.2831 * q4) + .05 * sin(5. * ang + 6.2831 * q1));
-        float peb = 1. - smoothstep(rad * .62, rad + fwidth(length(d)), length(d));   // a soft metal edge
-        float has = step(${f(1 - PEBBLE.present)}, holoHash(cell + 97.7));               // this cell holds a fleck
-        vec2 cuv = (cell + .5 + (vec2(q1, q2) - .5) * .3) / vec2(${f(PEBBLE.cells[0])}, ${f(PEBBLE.cells[1])});
-        float crest = pow(.5 + .5 * sin(6.2831 * (cuv.x * .8 + cuv.y * .5 + a.x * .7 - a.y * .4)), ${f(PEBBLE.crest)});   // the band of light
-        float own = pow(.5 + .5 * cos(6.2831 * (q4 + a.x * 1.6 + a.y * 1.1)), ${f(PEBBLE.own)});                           // its own tilt
-        vec3 silver = mix(vec3(.9, .93, .96), .5 + .5 * cos(6.2831 * (h + q3 * .3 + vec3(0., .33, .67))), ${f(PEBBLE.tint)});
-        totalEmissiveRadiance += silver * peb * has * (${f(PEBBLE.rest)} + crest * own) * ${f(PEBBLE.strength)} * (1. - inPhoto);
+        float rnd = holoHash(floor(vMapUv * vec2(${f(SPARK.cells[0])}, ${f(SPARK.cells[1])})));   // (no sin() hash: it fails on some GPUs)
+        float spark = step(${f(1 - SPARK.share)}, fract(rnd + a.x * 2.3 + a.y * 1.7)) * (1. - inPhoto);   // a grain catching the light
+        totalEmissiveRadiance += rainbow * (amt + spark * ${f(SPARK.strength)});
       }`);
   };
   return m;
@@ -532,24 +513,15 @@ const filmMask = (img, photoMask) => {   // alpha = the film's strength at each 
     out.data[i] = out.data[i + 1] = out.data[i + 2] = 255; out.data[i + 3] = amt / top * 255;
   }
   const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").putImageData(out, 0, 0);
-  // the pebble flakes, as in the shader: one per cell, at a random place, size and turn, each with its own outline
-  const [gx, gy] = PEBBLE.cells, pebbles = [], cw = (W - 4) / W, chh = (H - 4) / H;
+  const [gx, gy] = SPARK.cells, grains = [];
   for (let cy = 0; cy < gy; cy++) for (let cx = 0; cx < gx; cx++) {
-    if (pebbleRand(cx, cy, 5) < 1 - PEBBLE.present) continue;   // this cell holds no fleck
-    const q1 = pebbleRand(cx, cy, 1), q2 = pebbleRand(cx, cy, 2), q3 = pebbleRand(cx, cy, 3), q4 = pebbleRand(cx, cy, 4);
-    const u = (cx + .5 + (q1 - .5) * .3) / gx, v = (cy + .5 + (q2 - .5) * .3) / gy;   // centre, uv (v up)
-    const x = (u - 2 / W) / cw * w, y = (1 - v - 2 / H) / chh * h;
-    if (x < -8 || y < -8 || x > w + 8 || y > h + 8) continue;
-    if (pm && x >= 0 && y >= 0 && x < w && y < h && pm[(Math.floor(y) * w + Math.floor(x)) * 4 + 3] > 90) continue;
-    const r = (.19 + .13 * q3) / gy / chh * h, pts = [], rot = 2 * Math.PI * q2, st = 1 + .55 * q1;   // radius in image px
-    for (let k = 0; k < 16; k++) {   // an oval, stretched and turned at random, with a gentle irregular edge (as the shader)
-      const t = k / 16 * 2 * Math.PI, rr = r * (1 + .07 * Math.sin(3 * t + 2 * Math.PI * q4) + .05 * Math.sin(5 * t + 2 * Math.PI * q1));
-      const lx = Math.cos(t) * rr * st, ly = Math.sin(t) * rr;
-      pts.push([x + Math.cos(rot) * lx - Math.sin(rot) * ly, y - (Math.sin(rot) * lx + Math.cos(rot) * ly)]);
-    }
-    pebbles.push({ x, y, q3, q4, cu: u, cv: v, pts });
+    const x = (cx + .5) / gx * w, y = (1 - (cy + .5) / gy) * h;
+    if (pm && pm[(Math.floor(y) * w + Math.floor(x)) * 4 + 3] > 90) continue;
+    const v = Math.sin(cx * 12.9898 + cy * 78.233) * 43758.5453;
+    grains.push([v - Math.floor(v), cx / gx * w, (1 - (cy + 1) / gy) * h]);
   }
-  c.pebbles = pebbles;
+  grains.sort((p, q) => p[0] - q[0]);
+  c.grains = grains;
   return c;
 };
 const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map((img, i) => ({ img, film: filmMask(img, i === 0 ? trimOf(frontCv.photoMask) : null) }));
@@ -622,19 +594,15 @@ function draw2D(now) {
   g.drawImage(face.film, 0, 0);   // how much film each spot takes
   ctx2.globalCompositeOperation = "lighter"; ctx2.globalAlpha = FILM.dark + FILM.light;
   ctx2.drawImage(foilCv, 0, 0);
-  // the silver flecks: faint at rest, a soft flash where the band of light and their own tilt meet (as the shader)
-  for (const pb of face.film.pebbles) {
-    const lit = pebbleLight(pb.cu, pb.cv, pb.q4, ax, ay) * PEBBLE.strength2d;
-    if (lit < .015) continue;
-    const hh = hue0 + 1.1 * pb.x / iw + .6 * pb.y / ih + pb.q3 * .3;
-    const [cr, cg, cb] = [0, .33, .67].map((o, k) => Math.round(255 * ([.9, .93, .96][k] * (1 - PEBBLE.tint) + (.5 + .5 * Math.cos(2 * Math.PI * (hh + o))) * PEBBLE.tint)));
-    ctx2.fillStyle = `rgb(${cr},${cg},${cb})`;
-    ctx2.beginPath(); pb.pts.forEach(([px2, py2], k) => k ? ctx2.lineTo(px2, py2) : ctx2.moveTo(px2, py2)); ctx2.closePath();
-    ctx2.globalAlpha = Math.min(1, lit) * .45; ctx2.fill();                 // soft edge: the whole fleck faintly ...
-    ctx2.save(); ctx2.translate(pb.x, pb.y); ctx2.scale(.7, .7); ctx2.translate(-pb.x, -pb.y);
-    ctx2.globalAlpha = Math.min(1, lit); ctx2.fill(); ctx2.restore();      // ... and its middle fully
-  }
-  ctx2.globalAlpha = 1;
+  // the few grains catching the light: fract(rnd + phase) > 1 - share, i.e. rnd in one slice of the sorted list
+  const gr = face.film.grains, lo = ((1 - SPARK.share - (ax * 2.3 + ay * 1.7)) % 1 + 1) % 1, gw = iw / SPARK.cells[0], gh = ih / SPARK.cells[1];
+  const from = i => { let a = 0, b = gr.length; while (a < b) { const m = (a + b) >> 1; gr[m][0] < i ? a = m + 1 : b = m; } return a; };
+  const dots = new Path2D(), add = (a, b) => { for (let i = a; i < b; i++) dots.rect(gr[i][1], gr[i][2], gw, gh); };
+  const hi = lo + SPARK.share;
+  if (hi <= 1) add(from(lo), from(hi)); else { add(from(lo), gr.length); add(0, from(hi - 1)); }
+  ctx2.globalAlpha = SPARK.strength2d;
+  ctx2.fillStyle = lineGrad(ctx2, iw, ih, 1.1 / iw, .6 / ih, k => `rgb(${[0, .33, .67].map(o => Math.round(255 * (.5 + .5 * Math.cos(2 * Math.PI * (hue0 + k + o))))).join(",")})`);
+  ctx2.fill(dots);
   ctx2.restore();
   ctx2.globalCompositeOperation = "source-over"; ctx2.globalAlpha = 1;
 
