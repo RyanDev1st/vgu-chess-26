@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 // three.js is big: start fetching it now, but show the page text without waiting for it (see "the card in 3D")
 const threeP = Promise.all([import("three"), import("three/addons/environments/RoomEnvironment.js")]);
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=25";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=26";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "25", dbg = [];
+const VERSION = "26", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -160,11 +160,12 @@ const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.
 // little. No glitter dots. The photo takes only the faint film, never the bright part (a rainbow face looks wrong).
 // Shared numbers with the 2D drawing below.
 const FILM = { dark: .06, light: .42, lumFrom: .12, lumTo: .75, drift: .035, photo: .06 };
-// Foil flakes: small square flakes of foil in the film (bigger than glitter, about .6 mm). Each one is tilted its own way,
-// so as the card turns, tips or swings a different few catch the light and flash in the film's colours; the rest stay
-// dark. Only a small share of the film is flakes. Not on the photo. Shared with the 2D drawing.
-const FLAKE = { grain: [140, 90], share: .14, sharp: 14, strength: .9, strength2d: .9 };
-const flakeTwinkle = (r2, ax, ay, t) => Math.pow(.5 + .5 * Math.cos(2 * Math.PI * (r2 + ax * 1.9 + ay * 1.4 + t * .02)), FLAKE.sharp);
+// Foil flakes: little pebble-shaped bits of foil scattered at random in the film (about .5 to 1 mm, each its own
+// irregular rounded shape, size and turn; no grid). Each one is tilted its own way, so at any angle only a few catch
+// the light and flash in the film's colours, and a different few as the card moves. Not on the photo.
+// cells: the flakes are scattered one per cell of this grid, placed and shaped at random inside it.
+const PEBBLE = { cells: [96, 61], share: .035, strength: .5, strength2d: .7 };
+const pebbleRand = (cx, cy, k) => { const v = Math.sin(cx * 12.9898 + cy * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
 const holo = (map, photoMask) => {   // photoMask: the front only
   const m = new THREE.MeshPhysicalMaterial({
@@ -191,13 +192,17 @@ const holo = (map, photoMask) => {   // photoMask: the front only
         float band = .55 + .45 * sin(6.2831 * (vMapUv.x * .8 + vMapUv.y * .5 + a.x * .7 - a.y * .4));   // light catching in a moving band
         float amt = mix(${f(FILM.dark)} + ${f(FILM.light)} * smoothstep(${f(FILM.lumFrom)}, ${f(FILM.lumTo)}, lum), ${f(FILM.photo)}, inPhoto) * band;
         totalEmissiveRadiance += rainbow * amt;
-        // the flakes: which flake cell this spot is in; a small square inside it, if this cell holds a flake
-        vec2 gc = vMapUv * vec2(${f(FLAKE.grain[0])}, ${f(FLAKE.grain[1])}), cell = floor(gc), lc = fract(gc);
-        float r1 = holoHash(cell), r2 = holoHash(cell + vec2(57.31, 113.7));
-        float sq = step(.14, lc.x) * step(lc.x, .86) * step(.14, lc.y) * step(lc.y, .86);   // apart from its neighbours
-        float tw = pow(.5 + .5 * cos(6.2831 * (r2 + a.x * 1.9 + a.y * 1.4 + uTime * .02)), ${f(FLAKE.sharp)}) * step(${f(1 - FLAKE.share)}, r1);
-        vec3 fcol = mix(.5 + .5 * cos(6.2831 * (h + r1 * .25 + vec3(0., .33, .67))), vec3(.18, .95, .82), .3);
-        totalEmissiveRadiance += fcol * sq * tw * ${f(FLAKE.strength)} * (1. - inPhoto);
+        // the pebble flakes: this spot's cell, the flake's random place, size and turn in it, and its irregular outline
+        vec2 gp = vMapUv * vec2(${f(PEBBLE.cells[0])}, ${f(PEBBLE.cells[1])}), cell = floor(gp);
+        float q1 = holoHash(cell), q2 = holoHash(cell + 17.3), q3 = holoHash(cell + 41.9), q4 = holoHash(cell + 73.1);
+        vec2 d = (gp - cell - (.5 + (vec2(q1, q2) - .5) * .3)) * vec2(${f(PEBBLE.cells[1] / PEBBLE.cells[0] * W / H)}, 1.);   // round on the card
+        float rot = 6.2831 * q2, cr = cos(rot), sr = sin(rot);
+        d = vec2(cr * d.x + sr * d.y, -sr * d.x + cr * d.y) / vec2(1. + .55 * q1, 1.);   // a pebble: an oval, stretched and turned at random
+        float ang = atan(d.y, d.x), rad = (.19 + .13 * q3) * (1. + .07 * sin(3. * ang + 6.2831 * q4) + .05 * sin(5. * ang + 6.2831 * q1));
+        float aa = fwidth(length(d)) + .001, peb = 1. - smoothstep(rad - aa, rad + aa, length(d));
+        float lit = step(${f(1 - PEBBLE.share)}, fract(q4 * 7.31 + a.x * 2.3 + a.y * 1.7));   // this flake faces the light now
+        vec3 pcol = .5 + .5 * cos(6.2831 * (h + q3 * .3 + vec3(0., .33, .67)));
+        totalEmissiveRadiance += pcol * peb * lit * ${f(PEBBLE.strength)} * (1. - inPhoto);
       }`);
   };
   return m;
@@ -520,19 +525,23 @@ const filmMask = (img, photoMask) => {   // alpha = the film's strength at each 
     out.data[i] = out.data[i + 1] = out.data[i + 2] = 255; out.data[i + 3] = amt / top * 255;
   }
   const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").putImageData(out, 0, 0);
-  // the flakes, as in the shader: cells of the uv grid that hold one (not on the photo); the image is the trim area
-  const flakes = [], [gx, gy] = FLAKE.grain, hash = (x, y, k) => { const v = Math.sin(x * k[0] + y * k[1]) * k[2]; return v - Math.floor(v); };
+  // the pebble flakes, as in the shader: one per cell, at a random place, size and turn, each with its own outline
+  const [gx, gy] = PEBBLE.cells, pebbles = [], cw = (W - 4) / W, chh = (H - 4) / H;
   for (let cy = 0; cy < gy; cy++) for (let cx = 0; cx < gx; cx++) {
-    const r1 = hash(cx, cy, [12.9898, 78.233, 43758.5453]);
-    if (r1 < 1 - FLAKE.share) continue;
-    const u0 = (cx + .14) / gx, v1 = (cy + .86) / gy, s = .72;   // the flake square, in uv (v up)
-    const x = (u0 * W - 2) / (W - 4) * w, y = ((1 - v1) * H - 2) / (H - 4) * h, fw = s / gx * W / (W - 4) * w, fh = s / gy * H / (H - 4) * h;
-    if (x + fw < 0 || y + fh < 0 || x > w || y > h) continue;
-    const mx = Math.min(w - 1, Math.max(0, Math.floor(x + fw / 2))), my = Math.min(h - 1, Math.max(0, Math.floor(y + fh / 2)));
-    if (pm && pm[(my * w + mx) * 4 + 3] > 90) continue;
-    flakes.push({ x, y, fw, fh, r1, r2: hash(cx, cy, [39.3468, 11.135, 24634.6345]) });
+    const q1 = pebbleRand(cx, cy, 1), q2 = pebbleRand(cx, cy, 2), q3 = pebbleRand(cx, cy, 3), q4 = pebbleRand(cx, cy, 4);
+    const u = (cx + .5 + (q1 - .5) * .3) / gx, v = (cy + .5 + (q2 - .5) * .3) / gy;   // centre, uv (v up)
+    const x = (u - 2 / W) / cw * w, y = (1 - v - 2 / H) / chh * h;
+    if (x < -8 || y < -8 || x > w + 8 || y > h + 8) continue;
+    if (pm && x >= 0 && y >= 0 && x < w && y < h && pm[(Math.floor(y) * w + Math.floor(x)) * 4 + 3] > 90) continue;
+    const r = (.19 + .13 * q3) / gy / chh * h, pts = [], rot = 2 * Math.PI * q2, st = 1 + .55 * q1;   // radius in image px
+    for (let k = 0; k < 16; k++) {   // an oval, stretched and turned at random, with a gentle irregular edge (as the shader)
+      const t = k / 16 * 2 * Math.PI, rr = r * (1 + .07 * Math.sin(3 * t + 2 * Math.PI * q4) + .05 * Math.sin(5 * t + 2 * Math.PI * q1));
+      const lx = Math.cos(t) * rr * st, ly = Math.sin(t) * rr;
+      pts.push([x + Math.cos(rot) * lx - Math.sin(rot) * ly, y - (Math.sin(rot) * lx + Math.cos(rot) * ly)]);
+    }
+    pebbles.push({ x, y, q3, phase: (q4 * 7.31) % 1, pts });
   }
-  c.flakes = flakes;
+  c.pebbles = pebbles;
   return c;
 };
 const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map((img, i) => ({ img, film: filmMask(img, i === 0 ? trimOf(frontCv.photoMask) : null) }));
@@ -605,15 +614,14 @@ function draw2D(now) {
   g.drawImage(face.film, 0, 0);   // how much film each spot takes
   ctx2.globalCompositeOperation = "lighter"; ctx2.globalAlpha = FILM.dark + FILM.light;
   ctx2.drawImage(foilCv, 0, 0);
-  // the flakes: each flashes when its own tilt meets the light (same numbers as the shader), in the film's colours
-  ctx2.globalAlpha = 1;
-  for (const fl of face.film.flakes) {
-    const tw = flakeTwinkle(fl.r2, ax, ay, time);
-    if (tw < .02) continue;
-    const hh = hue0 + 1.1 * (fl.x + fl.fw / 2) / iw + .6 * (fl.y + fl.fh / 2) / ih + fl.r1 * .25;
-    const [cr, cg, cb] = [0, .33, .67].map((o, k) => Math.round(255 * ((.5 + .5 * Math.cos(2 * Math.PI * (hh + o))) * .7 + [.18, .95, .82][k] * .3)));
-    ctx2.fillStyle = `rgba(${cr},${cg},${cb},${(tw * FLAKE.strength2d).toFixed(3)})`;
-    ctx2.fillRect(fl.x, fl.y, fl.fw, fl.fh);
+  // the few pebble flakes facing the light now (same test as the shader), in the film's colours
+  const turnNow = ax * 2.3 + ay * 1.7;
+  ctx2.globalAlpha = PEBBLE.strength2d;
+  for (const pb of face.film.pebbles) {
+    if ((((pb.phase + turnNow) % 1) + 1) % 1 < 1 - PEBBLE.share) continue;
+    const hh = hue0 + 1.1 * pb.x / iw + .6 * pb.y / ih + pb.q3 * .3;
+    ctx2.fillStyle = `rgb(${[0, .33, .67].map(o => Math.round(255 * (.5 + .5 * Math.cos(2 * Math.PI * (hh + o))))).join(",")})`;
+    ctx2.beginPath(); pb.pts.forEach(([px2, py2], k) => k ? ctx2.lineTo(px2, py2) : ctx2.moveTo(px2, py2)); ctx2.closePath(); ctx2.fill();
   }
   ctx2.restore();
   ctx2.globalCompositeOperation = "source-over"; ctx2.globalAlpha = 1;
