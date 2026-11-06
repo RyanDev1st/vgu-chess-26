@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 // three.js is big: start fetching it now, but show the page text without waiting for it (see "the card in 3D")
 const threeP = Promise.all([import("three"), import("three/addons/environments/RoomEnvironment.js")]);
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=26";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=27";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "26", dbg = [];
+const VERSION = "27", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -160,11 +160,15 @@ const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.
 // little. No glitter dots. The photo takes only the faint film, never the bright part (a rainbow face looks wrong).
 // Shared numbers with the 2D drawing below.
 const FILM = { dark: .06, light: .42, lumFrom: .12, lumTo: .75, drift: .035, photo: .06 };
-// Foil flakes: little pebble-shaped bits of foil scattered at random in the film (about .5 to 1 mm, each its own
-// irregular rounded shape, size and turn; no grid). Each one is tilted its own way, so at any angle only a few catch
-// the light and flash in the film's colours, and a different few as the card moves. Not on the photo.
-// cells: the flakes are scattered one per cell of this grid, placed and shaped at random inside it.
-const PEBBLE = { cells: [96, 61], share: .035, strength: .5, strength2d: .7 };
+// Silver shimmer: small pebble-shaped flecks of silver foil scattered at random in the film (about .5 to 1 mm, each its
+// own rounded shape, size and turn; no grid). At rest they are almost invisible; where the film's moving band of light
+// passes over them, and their own tilt meets the light, they flash softly, silver with a faint rainbow tint.
+// Not on the photo. cells: one possible fleck per cell, placed and shaped at random; present: the share of cells
+// that hold one; rest: how faintly they show away from the light.
+const PEBBLE = { cells: [96, 61], present: .35, rest: .03, crest: 8, own: 3, tint: .2, strength: .85, strength2d: .85 };
+const pebbleLight = (cu, cv, q4, ax, ay) =>   // the band of light (as the film's) times the fleck's own tilt
+  PEBBLE.rest + Math.pow(.5 + .5 * Math.sin(2 * Math.PI * (cu * .8 + cv * .5 + ax * .7 - ay * .4)), PEBBLE.crest)
+    * Math.pow(.5 + .5 * Math.cos(2 * Math.PI * (q4 + ax * 1.6 + ay * 1.1)), PEBBLE.own);
 const pebbleRand = (cx, cy, k) => { const v = Math.sin(cx * 12.9898 + cy * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
 const holo = (map, photoMask) => {   // photoMask: the front only
@@ -199,10 +203,13 @@ const holo = (map, photoMask) => {   // photoMask: the front only
         float rot = 6.2831 * q2, cr = cos(rot), sr = sin(rot);
         d = vec2(cr * d.x + sr * d.y, -sr * d.x + cr * d.y) / vec2(1. + .55 * q1, 1.);   // a pebble: an oval, stretched and turned at random
         float ang = atan(d.y, d.x), rad = (.19 + .13 * q3) * (1. + .07 * sin(3. * ang + 6.2831 * q4) + .05 * sin(5. * ang + 6.2831 * q1));
-        float aa = fwidth(length(d)) + .001, peb = 1. - smoothstep(rad - aa, rad + aa, length(d));
-        float lit = step(${f(1 - PEBBLE.share)}, fract(q4 * 7.31 + a.x * 2.3 + a.y * 1.7));   // this flake faces the light now
-        vec3 pcol = .5 + .5 * cos(6.2831 * (h + q3 * .3 + vec3(0., .33, .67)));
-        totalEmissiveRadiance += pcol * peb * lit * ${f(PEBBLE.strength)} * (1. - inPhoto);
+        float peb = 1. - smoothstep(rad * .62, rad + fwidth(length(d)), length(d));   // a soft metal edge
+        float has = step(${f(1 - PEBBLE.present)}, holoHash(cell + 97.7));               // this cell holds a fleck
+        vec2 cuv = (cell + .5 + (vec2(q1, q2) - .5) * .3) / vec2(${f(PEBBLE.cells[0])}, ${f(PEBBLE.cells[1])});
+        float crest = pow(.5 + .5 * sin(6.2831 * (cuv.x * .8 + cuv.y * .5 + a.x * .7 - a.y * .4)), ${f(PEBBLE.crest)});   // the band of light
+        float own = pow(.5 + .5 * cos(6.2831 * (q4 + a.x * 1.6 + a.y * 1.1)), ${f(PEBBLE.own)});                           // its own tilt
+        vec3 silver = mix(vec3(.9, .93, .96), .5 + .5 * cos(6.2831 * (h + q3 * .3 + vec3(0., .33, .67))), ${f(PEBBLE.tint)});
+        totalEmissiveRadiance += silver * peb * has * (${f(PEBBLE.rest)} + crest * own) * ${f(PEBBLE.strength)} * (1. - inPhoto);
       }`);
   };
   return m;
@@ -528,6 +535,7 @@ const filmMask = (img, photoMask) => {   // alpha = the film's strength at each 
   // the pebble flakes, as in the shader: one per cell, at a random place, size and turn, each with its own outline
   const [gx, gy] = PEBBLE.cells, pebbles = [], cw = (W - 4) / W, chh = (H - 4) / H;
   for (let cy = 0; cy < gy; cy++) for (let cx = 0; cx < gx; cx++) {
+    if (pebbleRand(cx, cy, 5) < 1 - PEBBLE.present) continue;   // this cell holds no fleck
     const q1 = pebbleRand(cx, cy, 1), q2 = pebbleRand(cx, cy, 2), q3 = pebbleRand(cx, cy, 3), q4 = pebbleRand(cx, cy, 4);
     const u = (cx + .5 + (q1 - .5) * .3) / gx, v = (cy + .5 + (q2 - .5) * .3) / gy;   // centre, uv (v up)
     const x = (u - 2 / W) / cw * w, y = (1 - v - 2 / H) / chh * h;
@@ -539,7 +547,7 @@ const filmMask = (img, photoMask) => {   // alpha = the film's strength at each 
       const lx = Math.cos(t) * rr * st, ly = Math.sin(t) * rr;
       pts.push([x + Math.cos(rot) * lx - Math.sin(rot) * ly, y - (Math.sin(rot) * lx + Math.cos(rot) * ly)]);
     }
-    pebbles.push({ x, y, q3, phase: (q4 * 7.31) % 1, pts });
+    pebbles.push({ x, y, q3, q4, cu: u, cv: v, pts });
   }
   c.pebbles = pebbles;
   return c;
@@ -614,15 +622,19 @@ function draw2D(now) {
   g.drawImage(face.film, 0, 0);   // how much film each spot takes
   ctx2.globalCompositeOperation = "lighter"; ctx2.globalAlpha = FILM.dark + FILM.light;
   ctx2.drawImage(foilCv, 0, 0);
-  // the few pebble flakes facing the light now (same test as the shader), in the film's colours
-  const turnNow = ax * 2.3 + ay * 1.7;
-  ctx2.globalAlpha = PEBBLE.strength2d;
+  // the silver flecks: faint at rest, a soft flash where the band of light and their own tilt meet (as the shader)
   for (const pb of face.film.pebbles) {
-    if ((((pb.phase + turnNow) % 1) + 1) % 1 < 1 - PEBBLE.share) continue;
+    const lit = pebbleLight(pb.cu, pb.cv, pb.q4, ax, ay) * PEBBLE.strength2d;
+    if (lit < .015) continue;
     const hh = hue0 + 1.1 * pb.x / iw + .6 * pb.y / ih + pb.q3 * .3;
-    ctx2.fillStyle = `rgb(${[0, .33, .67].map(o => Math.round(255 * (.5 + .5 * Math.cos(2 * Math.PI * (hh + o))))).join(",")})`;
-    ctx2.beginPath(); pb.pts.forEach(([px2, py2], k) => k ? ctx2.lineTo(px2, py2) : ctx2.moveTo(px2, py2)); ctx2.closePath(); ctx2.fill();
+    const [cr, cg, cb] = [0, .33, .67].map((o, k) => Math.round(255 * ([.9, .93, .96][k] * (1 - PEBBLE.tint) + (.5 + .5 * Math.cos(2 * Math.PI * (hh + o))) * PEBBLE.tint)));
+    ctx2.fillStyle = `rgb(${cr},${cg},${cb})`;
+    ctx2.beginPath(); pb.pts.forEach(([px2, py2], k) => k ? ctx2.lineTo(px2, py2) : ctx2.moveTo(px2, py2)); ctx2.closePath();
+    ctx2.globalAlpha = Math.min(1, lit) * .45; ctx2.fill();                 // soft edge: the whole fleck faintly ...
+    ctx2.save(); ctx2.translate(pb.x, pb.y); ctx2.scale(.7, .7); ctx2.translate(-pb.x, -pb.y);
+    ctx2.globalAlpha = Math.min(1, lit); ctx2.fill(); ctx2.restore();      // ... and its middle fully
   }
+  ctx2.globalAlpha = 1;
   ctx2.restore();
   ctx2.globalCompositeOperation = "source-over"; ctx2.globalAlpha = 1;
 
