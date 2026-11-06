@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 // three.js is big: start fetching it now, but show the page text without waiting for it (see "the card in 3D")
 const threeP = Promise.all([import("three"), import("three/addons/environments/RoomEnvironment.js")]);
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=22";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=23";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "22", dbg = [];
+const VERSION = "23", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -94,13 +94,13 @@ const thumb = async (n, c) => {
 $("#podium").innerHTML = ["1", "2", "3", "4"].map(n => {
   const c = data.cards?.[n] || {};
   return `<a href="?c=${n}${demo}" ${n === id ? 'aria-current="page"' : ""}>
-    <img data-n="${n}" alt="${esc(c.name || TIERS[n].label)}'s card" width="${(W - 4) * 7}" height="${(H - 4) * 7}">
+    <img data-n="${n}" class="wait" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="${esc(c.name || TIERS[n].label)}'s card">
     <span class="pn">${esc(c.name || "To be decided")}</span><span class="pl">${title(TIERS[n].label)}</span></a>`;
 }).join("");
 // drawn after the main card has started falling (each one is a full card render), one per frame
 const drawFour = async () => {
   for (const img of document.querySelectorAll("#podium img[data-n]")) {
-    img.src = await thumb(img.dataset.n, data.cards?.[img.dataset.n] || {});
+    img.src = await thumb(img.dataset.n, data.cards?.[img.dataset.n] || {}); img.classList.remove("wait");
     await new Promise(r => requestAnimationFrame(r));
   }
 };
@@ -481,7 +481,8 @@ last = performance.now();
 requestAnimationFrame(frame);
 setTimeout(() => $(".stage").classList.add("live"), reduce ? 0 : 1100);   // the turn controls appear as the card lands
 // the four card pictures: once the card has landed (each is a full card drawing; done during the drop they made it jerk)
-setTimeout(() => (window.requestIdleCallback || setTimeout)(drawFour), reduce ? 0 : 1800);
+// (idle time, but within a second: in 2D the card is drawn every frame, so a browser may never be idle)
+setTimeout(() => window.requestIdleCallback ? requestIdleCallback(drawFour, { timeout: 1000 }) : drawFour(), reduce ? 0 : 1800);
 
 
 // ---------- 2D drawing (no WebGL) ----------

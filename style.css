@@ -69,7 +69,7 @@ h2 { font: 600 26px/1.15 var(--serif); margin-bottom: 14px; }
 /* this year's four: the real cards, swipe sideways */
 .four nav { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 22px; margin: 0 -22px; padding: 2px 22px 6px; scrollbar-width: none; }
 .four nav::-webkit-scrollbar { display: none; }
-.four a { flex: 0 0 58%; scroll-snap-align: start; color: var(--ink); text-decoration: none; }
+.four a { flex: 0 0 58%; min-width: 0; scroll-snap-align: start; color: var(--ink); text-decoration: none; }
 .four a { display: block; }
 .four img { display: block; width: 100%; aspect-ratio: 85.6 / 54; border-radius: 4.3% / 6.8%; filter: brightness(.6); transition: filter .2s; }
 .four a:hover img { filter: brightness(.85); }
@@ -134,7 +134,7 @@ footer { margin-top: 44px; font-size: 12.5px; line-height: 1.7; color: var(--fai
    with a dark card shape until their pictures are drawn */
 main { transition: opacity .45s ease, transform .45s ease; }
 body:not(.ready) main { opacity: 0; transform: translateY(10px); }
-.four img:not([src]) { background: #17161a; }
+.four img.wait { background: #17161a; }   /* a blank image on a dark card shape until the picture is drawn */
 @media (prefers-reduced-motion: reduce) { main { transition: none; } }
 .turn { transition: opacity .4s ease; }
 .stage:not(.live) .turn { opacity: 0; pointer-events: none; }
