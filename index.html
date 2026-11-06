@@ -17,7 +17,7 @@
 <!-- start fetching three.js and the page code with the page itself, not one after another -->
 <link rel="modulepreload" href="https://unpkg.com/three@0.170.0/build/three.module.min.js" crossorigin>
 <link rel="modulepreload" href="https://unpkg.com/three@0.170.0/examples/jsm/environments/RoomEnvironment.js" crossorigin>
-<link rel="modulepreload" href="card.js?v=30">
+<link rel="modulepreload" href="card.js?v=31">
 </head>
 <body>
   <header class="top"><span class="lockup">VGU Chess <b>26</b></span></header>
@@ -25,12 +25,7 @@
   <!-- the card on its lanyard: drag to swing, tap to turn it over -->
   <section class="stage" aria-label="The card. Drag to swing it, tap to turn it over.">
     <canvas id="gl"></canvas>
-    <div class="turn" id="turn">
-      <button type="button" id="turnL" aria-label="Turn left"><i class="ic ic-ccw"></i></button>
-      <span class="pad" id="turnPad" tabindex="0" role="slider" aria-label="Drag to turn and tip the card"><i class="ic ic-arrows"></i>Drag to turn</span>
-      <button type="button" id="turnR" aria-label="Turn right"><i class="ic ic-cw"></i></button>
-      <button type="button" class="over" id="flip"><i class="ic ic-rotate"></i><span>Back</span></button>
-    </div>
+    <button type="button" class="move" id="move" aria-label="Move the card: drag to turn or tip it, tap to turn it over" title="Drag to turn · tap to flip"><i class="ic ic-move"></i></button>
   </section>
 
   <main>
@@ -80,6 +75,6 @@
 
     <footer>Castlevania Club, Vietnamese-German University<br>Sport Week 2026, 16 to 19 November</footer>
   </main>
-  <script type="module" src="app.js?v=30"></script>
+  <script type="module" src="app.js?v=31"></script>
 </body>
 </html>

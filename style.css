@@ -108,24 +108,17 @@ footer { margin-top: 44px; font-size: 12.5px; line-height: 1.7; color: var(--fai
   .four nav { cursor: grab; margin: 0; padding: 2px 0 6px; scroll-padding-inline: 0; }
   .arrows { display: flex; }
 }
-/* the turn control under the card: drag the pad to look at the card from any angle */
-.turn { position: absolute; z-index: 4; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 4px;
-        border-radius: 14px; border: 1px solid var(--line); background: rgba(11, 11, 12, .72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-        color: var(--ink); font: 600 13px var(--sans); white-space: nowrap; }
-.turn button, .turn .pad { display: flex; align-items: center; justify-content: center; gap: 7px; height: 38px; border: 0; border-radius: 10px;
-        background: none; color: inherit; font: inherit; cursor: pointer; touch-action: none; -webkit-user-select: none; user-select: none; }
-.turn button { width: 38px; }
-.turn button:hover, .turn .pad:hover { background: rgba(242, 239, 233, .06); }
-.turn .pad { padding: 0 14px; min-width: 132px; background: rgba(242, 239, 233, .07); cursor: ew-resize; color: var(--dim); }
-.turn .pad.on { background: rgba(242, 239, 233, .14); color: var(--ink); cursor: grabbing; }
-.turn .over { width: auto; padding: 0 12px 0 10px; border-left: 1px solid var(--line); border-radius: 0 10px 10px 0; }
-.turn .ic { width: 17px; height: 17px; }
-.turn button:active { transform: scale(.94); }
-.turn :focus-visible { outline: 2px solid var(--tier); outline-offset: 2px; }
-.ic-ccw { --i: url(icons/rotate-ccw.svg); }
-.ic-cw { --i: url(icons/rotate-cw.svg); }
-.ic-arrows { --i: url(icons/arrows-h.svg); }
-@media (min-width: 960px) { .turn { bottom: 32px; } }
+/* the move handle under the card: drag it to turn or tip the card, tap it to turn the card over */
+.move { position: absolute; z-index: 4; left: 50%; bottom: 10px; width: 46px; height: 46px; margin-left: -23px; display: grid; place-items: center;
+        border-radius: 50%; border: 1px solid var(--line); background: rgba(11, 11, 12, .72); color: var(--dim);
+        -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none;
+        transition: color .2s, background .2s, transform .15s, opacity .4s ease; }
+.move .ic { width: 22px; height: 22px; }
+.move:hover { color: var(--ink); background: rgba(30, 30, 33, .8); }
+.move.on { color: var(--ink); background: rgba(242, 239, 233, .14); cursor: grabbing; transform: scale(1.08); }
+.move:focus-visible { outline: 2px solid var(--tier); outline-offset: 3px; }
+.ic-move { --i: url(icons/arrows-move.svg); }
+@media (min-width: 960px) { .move { bottom: 32px; } }
 @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
 
 #debug { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 9; margin: 0; padding: 10px; border-radius: 8px; background: rgba(0,0,0,.85); color: #9f9; font: 11px/1.4 "JB Mono", monospace; white-space: pre-wrap; }
@@ -136,5 +129,4 @@ main { transition: opacity .45s ease, transform .45s ease; }
 body:not(.ready) main { opacity: 0; transform: translateY(10px); }
 .four img.wait { background: #17161a; }   /* a blank image on a dark card shape until the picture is drawn */
 @media (prefers-reduced-motion: reduce) { main { transition: none; } }
-.turn { transition: opacity .4s ease; }
-.stage:not(.live) .turn { opacity: 0; pointer-events: none; }
+.stage:not(.live) .move { opacity: 0; pointer-events: none; }

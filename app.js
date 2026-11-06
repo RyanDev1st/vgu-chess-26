@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 // three.js is big: start fetching it now, but show the page text without waiting for it (see "the card in 3D")
 const threeP = Promise.all([import("three"), import("three/addons/environments/RoomEnvironment.js")]);
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=30";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=31";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "30", dbg = [];
+const VERSION = "31", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -396,51 +396,39 @@ stage.addEventListener("pointermove", e => { if (dragging) grab.copy(toWorld(e))
 const release = e => {
   if (!dragging) return;
   dragging = false; stage.classList.remove("drag");
-  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 350) flipBtn.onclick();   // tap: turn over
+  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 350) turnOver();   // tap: turn over
 };
-// ---------- the turn control: look at the card from any angle ----------
-// Drag across the pad: sideways turns the card any amount, up/down tips it toward or away from you, and it stays
-// where you leave it so you can watch the foil. The arrows step it an eighth of a turn, or keep turning while held.
-// The last button turns it over (the same as a tap on the card).
-const flipBtn = $("#flip"), pad = $("#turnPad");
-const flipLabel = () => { flipBtn.querySelector("span").textContent = Math.cos(spinTarget) > 0 ? "Back" : "Front"; };
+// ---------- the move handle: look at the card from any angle ----------
+// One round handle under the card. Drag it: sideways turns the card any amount, up/down tips it toward or away from
+// you, and it stays where you leave it so you can watch the foil. A quick tap turns the card over (as a tap on the card).
+// Keyboard: arrows turn and tip, Enter or Space turns it over.
+const handle = $("#move");
+const turnOver = () => { spinTarget = Math.round(spinTarget / Math.PI) * Math.PI + Math.PI; pitchTarget = 0; };
 const TURN_PX = 2 * Math.PI / 260;   // 260 px of drag is a full turn
 const MAX_PITCH = .75;
-$("#turn").addEventListener("pointerdown", e => e.stopPropagation());   // never grabs the card underneath
+handle.addEventListener("pointerdown", e => e.stopPropagation());   // never grabs the card underneath
 let padDrag = null;
-pad.addEventListener("pointerdown", e => {
-  padDrag = { x: e.clientX, y: e.clientY, spin: spinTarget, pitch: pitchTarget };
-  turning = true; pad.setPointerCapture(e.pointerId); pad.classList.add("on");
+handle.addEventListener("pointerdown", e => {
+  padDrag = { x: e.clientX, y: e.clientY, t: performance.now(), spin: spinTarget, pitch: pitchTarget };
+  turning = true; handle.setPointerCapture(e.pointerId); handle.classList.add("on");
 });
-pad.addEventListener("pointermove", e => {
+handle.addEventListener("pointermove", e => {
   if (!padDrag) return;
   spinTarget = padDrag.spin + (e.clientX - padDrag.x) * TURN_PX;
   pitchTarget = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, padDrag.pitch + (e.clientY - padDrag.y) * .006));
-  flipLabel();
 });
-const padEnd = () => { padDrag = null; turning = false; pad.classList.remove("on"); };
-pad.addEventListener("pointerup", padEnd); pad.addEventListener("pointercancel", padEnd);
-pad.addEventListener("keydown", e => {   // keyboard: arrows turn and tip
+const padEnd = e => {
+  if (padDrag && e.type === "pointerup" && Math.hypot(e.clientX - padDrag.x, e.clientY - padDrag.y) < 6 && performance.now() - padDrag.t < 300) turnOver();
+  padDrag = null; turning = false; handle.classList.remove("on");
+};
+handle.addEventListener("pointerup", padEnd); handle.addEventListener("pointercancel", padEnd);
+handle.addEventListener("keydown", e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); turnOver(); return; }
   const k = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
   if (!k) return;
   e.preventDefault(); spinTarget += k[0] * Math.PI / 12;
-  pitchTarget = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitchTarget + k[1] * .15)); flipLabel();
+  pitchTarget = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitchTarget + k[1] * .15));
 });
-for (const [id, dir] of [["#turnL", -1], ["#turnR", 1]]) {
-  const b = $(id); let hold = null;
-  const stop = () => { clearTimeout(hold?.t); cancelAnimationFrame(hold?.raf); hold = null; turning = false; };
-  b.addEventListener("pointerdown", e => {
-    b.setPointerCapture(e.pointerId); turning = true;
-    spinTarget += dir * Math.PI / 4; flipLabel();   // a press: an eighth of a turn
-    hold = { t: setTimeout(() => {                  // held: keep turning, about a turn every three seconds
-      let prev = performance.now();
-      const run = now => { if (!hold) return; spinTarget += dir * 2.1 * (now - prev) / 1000; prev = now; flipLabel(); hold.raf = requestAnimationFrame(run); };
-      hold.raf = requestAnimationFrame(run);
-    }, 320) };
-  });
-  b.addEventListener("pointerup", stop); b.addEventListener("pointercancel", stop);
-}
-flipBtn.onclick = () => { spinTarget = Math.round(spinTarget / Math.PI) * Math.PI + Math.PI; pitchTarget = 0; flipLabel(); };
 stage.addEventListener("pointerup", release); stage.addEventListener("pointercancel", release);
 
 // ---------- fit + loop ----------
