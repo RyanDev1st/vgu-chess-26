@@ -19,7 +19,7 @@ body::before { /* a faint pool of the place's metal under the card */
 .lockup { font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
 .lockup b { display: inline-block; font-size: 10.5px; border: 1.5px solid var(--ink); border-radius: 5px; padding: 0 5px; margin-left: 3px; translate: 0 -1px; }
 
-.stage { position: relative; height: min(118vw, 64svh, 600px); touch-action: none; cursor: grab; }
+.stage { position: relative; height: calc(min(118vw, 64svh, 600px) + 58px);   /* + the strip for the turn controls */ touch-action: none; cursor: grab; }
 .stage.drag { cursor: grabbing; }
 /* the canvas runs past the stage, so a pulled or swinging card passes over the page instead of being cut off */
 #gl { position: absolute; top: 0; left: 0; z-index: 3; width: 100%; height: calc(100% + 360px); display: block; pointer-events: none; }

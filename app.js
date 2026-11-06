@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 // three.js is big: start fetching it now, but show the page text without waiting for it (see "the card in 3D")
 const threeP = Promise.all([import("three"), import("three/addons/environments/RoomEnvironment.js")]);
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=21";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=22";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "21", dbg = [];
+const VERSION = "22", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -446,8 +446,11 @@ stage.addEventListener("pointerup", release); stage.addEventListener("pointercan
 // ---------- fit + loop ----------
 // The view always starts just above the anchor and is wide enough for the card, so the band enters from the top edge.
 // The card is framed to the stage; the canvas just shows more of the same view below it, for the swing.
+const TURN_ROOM = 58;   // px, the same as the extra stage height in style.css
 function resize() {
-  const w = canvas.clientWidth, h = canvas.clientHeight, sh = stage.clientHeight;
+  // phones: the turn controls get their own strip under the card (they used to cover its bottom edge)
+  const room = matchMedia("(min-width: 960px)").matches ? 0 : TURN_ROOM;
+  const w = canvas.clientWidth, h = canvas.clientHeight, sh = stage.clientHeight - room;
   if (renderer) renderer.setSize(w, h, false);
   else { const r = Math.min(devicePixelRatio, 2); canvas.width = Math.round(w * r); canvas.height = Math.round(h * r); }
   const f0 = Math.tan(THREE.MathUtils.degToRad(12.5));
@@ -464,9 +467,9 @@ new ResizeObserver(resize).observe(canvas); resize();
 let last = performance.now(), acc = 0;
 const STEP = 1 / 120;   // fixed step: the swing feels the same on any phone
 const frame = now => {
-  // at most 4 physics steps per frame: catching up a slow frame with 30 steps made the next frame slow too, and a
-  // slow phone never recovered (5 frames a second). Behind that, the card just moves in slight slow motion.
-  acc = Math.min(acc + (now - last) / 1000, 4 * STEP); last = now;
+  // catch up at most 10 physics steps a frame: real-time motion down to 12 frames a second (a slow phone), but one long
+  // stall (a tab switch) does not turn into a burst of hundreds of steps
+  acc = Math.min(acc + (now - last) / 1000, 10 * STEP); last = now;
   while (acc >= STEP) { step(STEP); acc -= STEP; }
   place();
   holoU.uTilt.value.lerp(tilt, .08); holoU.uTime.value = now / 1000;
