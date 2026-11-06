@@ -3,10 +3,10 @@
 // and see the run of five games. The card hangs on a lanyard (after the Vercel Ship 2024 badge): drag to swing, tap to turn over.
 // three.js is big: start fetching it now, but show the page text without waiting for it (see "the card in 3D")
 const threeP = Promise.all([import("three"), import("three/addons/environments/RoomEnvironment.js")]);
-import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=23";
+import { drawFront, drawBack, fontsReady, loadImage, TIERS, W, H } from "./card.js?v=25";
 
 // ?debug shows what this device is doing (for checking phones we cannot plug in)
-const VERSION = "23", dbg = [];
+const VERSION = "25", dbg = [];
 const note = m => { dbg.push(m); const b = document.querySelector("#debug"); if (b) b.textContent = dbg.join("\n"); };
 if (new URLSearchParams(location.search).has("debug")) {
   const b = Object.assign(document.createElement("pre"), { id: "debug" }); document.body.append(b);
@@ -160,9 +160,11 @@ const tex = cv => { const x = new THREE.CanvasTexture(cv); x.colorSpace = THREE.
 // little. No glitter dots. The photo takes only the faint film, never the bright part (a rainbow face looks wrong).
 // Shared numbers with the 2D drawing below.
 const FILM = { dark: .06, light: .42, lumFrom: .12, lumTo: .75, drift: .035, photo: .06 };
-// A few fine glints, as in the first mock: the film is made of tiny grains (520 across the card); at any angle about
-// 1.5% of them catch the light, and a different few as the card moves. Not on the photo.
-const SPARK = { cells: [520, 340], share: .01, strength: .3, strength2d: .6 };   // 2D dots are flat squares: a little stronger to read the same
+// Foil flakes: small square flakes of foil in the film (bigger than glitter, about .6 mm). Each one is tilted its own way,
+// so as the card turns, tips or swings a different few catch the light and flash in the film's colours; the rest stay
+// dark. Only a small share of the film is flakes. Not on the photo. Shared with the 2D drawing.
+const FLAKE = { grain: [140, 90], share: .14, sharp: 14, strength: .9, strength2d: .9 };
+const flakeTwinkle = (r2, ax, ay, t) => Math.pow(.5 + .5 * Math.cos(2 * Math.PI * (r2 + ax * 1.9 + ay * 1.4 + t * .02)), FLAKE.sharp);
 const holoU = { uTilt: { value: new THREE.Vector2() }, uTime: { value: 0 } };
 const holo = (map, photoMask) => {   // photoMask: the front only
   const m = new THREE.MeshPhysicalMaterial({
@@ -188,9 +190,14 @@ const holo = (map, photoMask) => {   // photoMask: the front only
         vec3 rainbow = .5 + .5 * cos(6.2831 * (h + vec3(0., .33, .67)));
         float band = .55 + .45 * sin(6.2831 * (vMapUv.x * .8 + vMapUv.y * .5 + a.x * .7 - a.y * .4));   // light catching in a moving band
         float amt = mix(${f(FILM.dark)} + ${f(FILM.light)} * smoothstep(${f(FILM.lumFrom)}, ${f(FILM.lumTo)}, lum), ${f(FILM.photo)}, inPhoto) * band;
-        float rnd = holoHash(floor(vMapUv * vec2(${f(SPARK.cells[0])}, ${f(SPARK.cells[1])})));   // (no sin() hash: it fails on some GPUs)
-        float spark = step(${f(1 - SPARK.share)}, fract(rnd + a.x * 2.3 + a.y * 1.7)) * (1. - inPhoto);   // a grain catching the light
-        totalEmissiveRadiance += rainbow * (amt + spark * ${f(SPARK.strength)});
+        totalEmissiveRadiance += rainbow * amt;
+        // the flakes: which flake cell this spot is in; a small square inside it, if this cell holds a flake
+        vec2 gc = vMapUv * vec2(${f(FLAKE.grain[0])}, ${f(FLAKE.grain[1])}), cell = floor(gc), lc = fract(gc);
+        float r1 = holoHash(cell), r2 = holoHash(cell + vec2(57.31, 113.7));
+        float sq = step(.14, lc.x) * step(lc.x, .86) * step(.14, lc.y) * step(lc.y, .86);   // apart from its neighbours
+        float tw = pow(.5 + .5 * cos(6.2831 * (r2 + a.x * 1.9 + a.y * 1.4 + uTime * .02)), ${f(FLAKE.sharp)}) * step(${f(1 - FLAKE.share)}, r1);
+        vec3 fcol = mix(.5 + .5 * cos(6.2831 * (h + r1 * .25 + vec3(0., .33, .67))), vec3(.18, .95, .82), .3);
+        totalEmissiveRadiance += fcol * sq * tw * ${f(FLAKE.strength)} * (1. - inPhoto);
       }`);
   };
   return m;
@@ -513,15 +520,19 @@ const filmMask = (img, photoMask) => {   // alpha = the film's strength at each 
     out.data[i] = out.data[i + 1] = out.data[i + 2] = 255; out.data[i + 3] = amt / top * 255;
   }
   const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").putImageData(out, 0, 0);
-  const [gx, gy] = SPARK.cells, grains = [];
+  // the flakes, as in the shader: cells of the uv grid that hold one (not on the photo); the image is the trim area
+  const flakes = [], [gx, gy] = FLAKE.grain, hash = (x, y, k) => { const v = Math.sin(x * k[0] + y * k[1]) * k[2]; return v - Math.floor(v); };
   for (let cy = 0; cy < gy; cy++) for (let cx = 0; cx < gx; cx++) {
-    const x = (cx + .5) / gx * w, y = (1 - (cy + .5) / gy) * h;
-    if (pm && pm[(Math.floor(y) * w + Math.floor(x)) * 4 + 3] > 90) continue;
-    const v = Math.sin(cx * 12.9898 + cy * 78.233) * 43758.5453;
-    grains.push([v - Math.floor(v), cx / gx * w, (1 - (cy + 1) / gy) * h]);
+    const r1 = hash(cx, cy, [12.9898, 78.233, 43758.5453]);
+    if (r1 < 1 - FLAKE.share) continue;
+    const u0 = (cx + .14) / gx, v1 = (cy + .86) / gy, s = .72;   // the flake square, in uv (v up)
+    const x = (u0 * W - 2) / (W - 4) * w, y = ((1 - v1) * H - 2) / (H - 4) * h, fw = s / gx * W / (W - 4) * w, fh = s / gy * H / (H - 4) * h;
+    if (x + fw < 0 || y + fh < 0 || x > w || y > h) continue;
+    const mx = Math.min(w - 1, Math.max(0, Math.floor(x + fw / 2))), my = Math.min(h - 1, Math.max(0, Math.floor(y + fh / 2)));
+    if (pm && pm[(my * w + mx) * 4 + 3] > 90) continue;
+    flakes.push({ x, y, fw, fh, r1, r2: hash(cx, cy, [39.3468, 11.135, 24634.6345]) });
   }
-  grains.sort((p, q) => p[0] - q[0]);
-  c.grains = grains;
+  c.flakes = flakes;
   return c;
 };
 const faces2 = ctx2 && [trimOf(frontCv), trimOf(backCv)].map((img, i) => ({ img, film: filmMask(img, i === 0 ? trimOf(frontCv.photoMask) : null) }));
@@ -594,15 +605,16 @@ function draw2D(now) {
   g.drawImage(face.film, 0, 0);   // how much film each spot takes
   ctx2.globalCompositeOperation = "lighter"; ctx2.globalAlpha = FILM.dark + FILM.light;
   ctx2.drawImage(foilCv, 0, 0);
-  // the few grains catching the light: fract(rnd + phase) > 1 - share, i.e. rnd in one slice of the sorted list
-  const gr = face.film.grains, lo = ((1 - SPARK.share - (ax * 2.3 + ay * 1.7)) % 1 + 1) % 1, gw = iw / SPARK.cells[0], gh = ih / SPARK.cells[1];
-  const from = i => { let a = 0, b = gr.length; while (a < b) { const m = (a + b) >> 1; gr[m][0] < i ? a = m + 1 : b = m; } return a; };
-  const dots = new Path2D(), add = (a, b) => { for (let i = a; i < b; i++) dots.rect(gr[i][1], gr[i][2], gw, gh); };
-  const hi = lo + SPARK.share;
-  if (hi <= 1) add(from(lo), from(hi)); else { add(from(lo), gr.length); add(0, from(hi - 1)); }
-  ctx2.globalAlpha = SPARK.strength2d;
-  ctx2.fillStyle = lineGrad(ctx2, iw, ih, 1.1 / iw, .6 / ih, k => `rgb(${[0, .33, .67].map(o => Math.round(255 * (.5 + .5 * Math.cos(2 * Math.PI * (hue0 + k + o))))).join(",")})`);
-  ctx2.fill(dots);
+  // the flakes: each flashes when its own tilt meets the light (same numbers as the shader), in the film's colours
+  ctx2.globalAlpha = 1;
+  for (const fl of face.film.flakes) {
+    const tw = flakeTwinkle(fl.r2, ax, ay, time);
+    if (tw < .02) continue;
+    const hh = hue0 + 1.1 * (fl.x + fl.fw / 2) / iw + .6 * (fl.y + fl.fh / 2) / ih + fl.r1 * .25;
+    const [cr, cg, cb] = [0, .33, .67].map((o, k) => Math.round(255 * ((.5 + .5 * Math.cos(2 * Math.PI * (hh + o))) * .7 + [.18, .95, .82][k] * .3)));
+    ctx2.fillStyle = `rgba(${cr},${cg},${cb},${(tw * FLAKE.strength2d).toFixed(3)})`;
+    ctx2.fillRect(fl.x, fl.y, fl.fw, fl.fh);
+  }
   ctx2.restore();
   ctx2.globalCompositeOperation = "source-over"; ctx2.globalAlpha = 1;
 
